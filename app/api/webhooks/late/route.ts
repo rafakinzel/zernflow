@@ -288,6 +288,41 @@ async function processMessageEvent(
       msg.text || undefined
     );
 
+    // A contact parked on a Smart Delay is waiting for whatever they reply
+    // next, which usually matches no trigger at all. The resume check lives
+    // inside executeFlow, and executeFlow only ran when matchTrigger found
+    // something, so those sessions waited forever. Resume first, and only fall
+    // through to trigger matching when nothing is parked.
+    if (!handled) {
+      const { data: waitingSession } = await supabase
+        .from("flow_sessions")
+        .select("id, flow_id")
+        .eq("contact_id", contactId)
+        .eq("channel_id", channel.id)
+        .eq("status", "active")
+        .eq("waiting_for_input", true)
+        .maybeSingle();
+
+      if (waitingSession) {
+        try {
+          await executeFlow(supabase, {
+            triggerId: "",
+            flowId: waitingSession.flow_id,
+            channelId: channel.id,
+            contactId,
+            conversationId: conversation.id,
+            workspaceId: channel.workspace_id,
+            incomingMessage,
+            lateConversationId: conv.id,
+            lateAccountId: account.id,
+          });
+        } catch (err) {
+          console.error("Flow resume error:", err);
+        }
+        return;
+      }
+    }
+
     if (!handled) {
       const trigger = await matchTrigger(supabase, {
         channelId: channel.id,
