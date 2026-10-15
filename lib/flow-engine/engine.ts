@@ -38,6 +38,24 @@ export async function executeFlow(
     context.variables.message ??= context.incomingMessage.text;
   }
 
+  // Seed the contact's profile name so a flow can greet by name before it has
+  // asked for one, the way the platforms' own tools do. {{first_name}} is the
+  // first word of the display name; a later Set Field overwrites it with
+  // whatever the contact actually typed.
+  if (!context.variables.full_name) {
+    const { data: profile } = await supabase
+      .from("contacts")
+      .select("display_name")
+      .eq("id", context.contactId)
+      .single();
+
+    const displayName = profile?.display_name?.trim();
+    if (displayName) {
+      context.variables.full_name = displayName;
+      context.variables.first_name ??= displayName.split(/\s+/)[0];
+    }
+  }
+
   // Check for active session waiting for input
   const { data: activeSession } = await supabase
     .from("flow_sessions")
