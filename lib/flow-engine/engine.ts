@@ -279,7 +279,7 @@ async function traverseNodes(
     flow_id: context.flowId,
     contact_id: context.contactId,
     event_type: "node_executed",
-    metadata: { nodeId: node.id, nodeType: node.type },
+    metadata: { nodeId: node.id, nodeType: resolveNodeType(node) },
   });
 
   // Execute the node
@@ -287,7 +287,8 @@ async function traverseNodes(
 
   // Persist variables written by output-producing nodes so they survive
   // pauses (resumeSession reloads them from the session row).
-  if (node.type === "aiResponse" || node.type === "httpRequest") {
+  const executedType = resolveNodeType(node);
+  if (executedType === "aiResponse" || executedType === "httpRequest") {
     await supabase
       .from("flow_sessions")
       .update({ variables: (context.variables ?? {}) as Json })
@@ -325,13 +326,26 @@ async function traverseNodes(
   await traverseNodes(supabase, sessionId, nextNode, nodes, edges, context, depth + 1);
 }
 
+/**
+ * The flow builder saves every Actions-category node with type "action" and
+ * keeps the real kind in data.actionType, so this switch never matched them
+ * and they ran as silent no-ops. Resolve the real kind before dispatching.
+ */
+function resolveNodeType(node: FlowNode): FlowNode["type"] {
+  if ((node.type as string) !== "action") return node.type;
+  const actionType = (node.data as { actionType?: string }).actionType;
+  return (actionType ?? node.type) as FlowNode["type"];
+}
+
 async function executeNode(
   supabase: SupabaseClient<Database>,
   node: FlowNode,
   context: FlowExecutionContext,
   sessionId: string
 ): Promise<string | void> {
-  switch (node.type) {
+  const nodeType = resolveNodeType(node);
+
+  switch (nodeType) {
     case "sendMessage":
       return executeSendMessage(supabase, node.data as SendMessageNodeData, context);
     case "condition":
@@ -351,7 +365,7 @@ async function executeNode(
       return executeHumanTakeover(supabase, context, sessionId);
     case "subscribe":
     case "unsubscribe":
-      return executeSubscription(supabase, node.type, context);
+      return executeSubscription(supabase, nodeType, context);
     case "commentReply":
       return executeCommentReply(supabase, node.data as CommentReplyNodeData, context);
     case "privateReply":
