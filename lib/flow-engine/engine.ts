@@ -129,6 +129,9 @@ export async function executeFlow(
 
 const MAX_TRAVERSAL_DEPTH = 50;
 
+/** Delays at or below this run inline instead of going through the cron. */
+const INLINE_DELAY_MAX_MS = 10_000;
+
 // Thrown before resumeSession advances current_node_id, so callers may retry
 // without cancelling the session.
 export class FlowLoadError extends Error {}
@@ -681,6 +684,16 @@ async function executeDelay(
   };
 
   const delayMs = data.duration * (multipliers[data.unit] || 1000);
+
+  // Short pauses (a beat between two messages) run inline. The webhook has
+  // already acked by the time flows execute, so waiting here costs nothing,
+  // while scheduling a job would hand the resume to the cron — whose floor is
+  // one minute, turning a three-second beat into a minute of silence.
+  if (delayMs > 0 && delayMs <= INLINE_DELAY_MAX_MS) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return;
+  }
+
   const runAt = new Date(Date.now() + delayMs).toISOString();
 
   // Schedule a job to resume the flow
