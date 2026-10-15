@@ -150,6 +150,10 @@ export function ActionNode({ data, selected }: NodeProps) {
 
   const isAbSplit = actionType === "abSplit";
   const paths = isAbSplit ? nodeData.paths || [] : [];
+  // A Smart Delay with a timeout needs a second output so the flow can say
+  // what happens when the contact never replies.
+  const isSmartDelayWithTimeout =
+    actionType === "smartDelay" && Boolean(nodeData.timeout);
 
   return (
     <div
@@ -192,6 +196,27 @@ export function ActionNode({ data, selected }: NodeProps) {
               className="!h-3 !w-3 !border-2 !border-gray-400 !bg-white"
             />
           ))}
+        </>
+      ) : isSmartDelayWithTimeout ? (
+        <>
+          <div className="flex justify-between px-3 pb-2 text-[10px] font-medium">
+            <span className="text-emerald-600">Replied</span>
+            <span className="text-amber-600">No reply</span>
+          </div>
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="reply"
+            style={{ left: "30%" }}
+            className="!h-3 !w-3 !border-2 !border-emerald-500 !bg-white"
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="timeout"
+            style={{ left: "70%" }}
+            className="!h-3 !w-3 !border-2 !border-amber-500 !bg-white"
+          />
         </>
       ) : (
         <Handle

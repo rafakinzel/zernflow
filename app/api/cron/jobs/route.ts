@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { FlowLoadError, resumeSession } from "@/lib/flow-engine/engine";
+import {
+  FlowLoadError,
+  resumeSession,
+  timeoutSmartDelay,
+} from "@/lib/flow-engine/engine";
 import type { Json } from "@/lib/types/database";
 
 // Signals the handler to skip retry/backoff and route straight to the
@@ -370,6 +374,51 @@ async function processJob(
   job: { id: string; type: string; payload: Json }
 ) {
   switch (job.type) {
+    case "smart_delay_timeout": {
+      const payload = job.payload as {
+        sessionId: string;
+        nodeId: string;
+        flowId: string;
+        channelId: string;
+        contactId: string;
+        conversationId: string;
+        workspaceId: string;
+        lateConversationId?: string | null;
+        lateAccountId?: string | null;
+      };
+
+      const { data: session, error: sessionError } = await supabase
+        .from("flow_sessions")
+        .select("*")
+        .eq("id", payload.sessionId)
+        .eq("status", "active")
+        .single();
+
+      if (!session) {
+        // Only PGRST116 (zero rows) means the session genuinely ended; any
+        // other error is transient and must retry rather than drop the branch.
+        if (sessionError && sessionError.code !== "PGRST116") {
+          throw new Error(
+            `flow session ${payload.sessionId} could not be loaded: ${sessionError.message}`
+          );
+        }
+        return;
+      }
+
+      await timeoutSmartDelay(supabase, session, payload.nodeId, {
+        triggerId: "",
+        flowId: payload.flowId,
+        channelId: payload.channelId,
+        contactId: payload.contactId,
+        conversationId: payload.conversationId,
+        workspaceId: payload.workspaceId,
+        lateConversationId: payload.lateConversationId || undefined,
+        lateAccountId: payload.lateAccountId || undefined,
+        incomingMessage: {},
+      });
+      break;
+    }
+
     case "resume_flow": {
       const payload = job.payload as {
         sessionId: string;

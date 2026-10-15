@@ -12,6 +12,7 @@ import type {
   HttpRequestNodeData,
   GoToFlowNodeData,
   ABSplitNodeData,
+  SmartDelayNodeData,
   CommentReplyNodeData,
   PrivateReplyNodeData,
   AiResponseNodeData,
@@ -195,10 +196,25 @@ export async function resumeSession(
 
   context.variables = (session.variables as Record<string, string>) || {};
 
-  // The resume is driven by a fresh reply; make {{message}} reflect it.
-  if (context.incomingMessage.text) {
-    context.variables.message = context.incomingMessage.text;
+  // The resume is driven by a fresh reply; make {{message}} reflect it. A tap
+  // on a button or quick reply carries no text, so fall back to its payload —
+  // otherwise a condition node can never tell which button was pressed.
+  const replyText =
+    context.incomingMessage.text ||
+    context.incomingMessage.quickReplyPayload ||
+    context.incomingMessage.postbackPayload;
+  if (replyText) {
+    context.variables.message = replyText;
   }
+
+  // The contact replied, so the Smart Delay give-up job must not fire later
+  // and push them down the "no reply" branch mid-conversation.
+  await supabase
+    .from("scheduled_jobs")
+    .delete()
+    .eq("type", "smart_delay_timeout")
+    .eq("status", "pending")
+    .contains("payload", { sessionId: session.id });
 
   // Update session
   await supabase
@@ -219,8 +235,13 @@ export async function resumeSession(
     return;
   }
 
-  // Get next node after the current one
-  const nextEdge = edges.find((e) => e.source === currentNode.id);
+  // Get next node after the current one. A Smart Delay with a timeout has two
+  // outputs, so a reply must follow the "replied" one and never fall into the
+  // "no reply" branch just because that edge was drawn first.
+  const outgoing = edges.filter((e) => e.source === currentNode.id);
+  const nextEdge =
+    outgoing.find((e) => e.sourceHandle === "reply") ??
+    outgoing.find((e) => e.sourceHandle !== "timeout");
   if (!nextEdge) {
     await completeSession(supabase, session.id);
     return;
@@ -290,8 +311,16 @@ async function traverseNodes(
 
   // Persist variables written by output-producing nodes so they survive
   // pauses (resumeSession reloads them from the session row).
+  // Persist on pause too, and after setCustomField: resumeSession reloads
+  // variables from the session row, so anything captured before a Smart Delay
+  // was silently lost when the contact replied.
   const executedType = resolveNodeType(node);
-  if (executedType === "aiResponse" || executedType === "httpRequest") {
+  if (
+    executedType === "aiResponse" ||
+    executedType === "httpRequest" ||
+    executedType === "setCustomField" ||
+    result === "pause"
+  ) {
     await supabase
       .from("flow_sessions")
       .update({ variables: (context.variables ?? {}) as Json })
@@ -305,10 +334,18 @@ async function traverseNodes(
   let nextEdge: FlowEdge | undefined;
 
   if (result && typeof result === "string" && result.startsWith("handle:")) {
-    // Condition/split nodes specify which handle to follow
+    // Condition/split nodes specify which handle to follow. The builder draws
+    // the condition outputs as "yes"/"no" while the engine speaks
+    // "true"/"false", so accept both spellings or every condition dead-ends.
     const handle = result.replace("handle:", "");
+    const accepted =
+      handle === "true"
+        ? ["true", "yes"]
+        : handle === "false"
+          ? ["false", "no"]
+          : [handle];
     nextEdge = edges.find(
-      (e) => e.source === node.id && e.sourceHandle === handle
+      (e) => e.source === node.id && accepted.includes(e.sourceHandle ?? "")
     );
   } else {
     nextEdge = edges.find((e) => e.source === node.id);
@@ -378,12 +415,13 @@ async function executeNode(
     case "abSplit":
       return executeABSplit(node.data as ABSplitNodeData);
     case "smartDelay":
-      // Wait for next input
-      await supabase
-        .from("flow_sessions")
-        .update({ waiting_for_input: true, current_node_id: node.id })
-        .eq("id", sessionId);
-      return "pause";
+      return executeSmartDelay(
+        supabase,
+        node.data as SmartDelayNodeData,
+        sessionId,
+        node.id,
+        context
+      );
     case "enrollSequence":
       return executeEnrollSequence(supabase, node.data as EnrollSequenceNodeData, context);
     default:
@@ -774,6 +812,13 @@ async function executeSetField(
 
   const value = interpolateVariables(data.value, context.variables || {});
 
+  // Also expose the value as {{slug}} for the rest of the run. Without this a
+  // flow can store an answer but never use it again: custom fields are only
+  // readable from condition nodes, so "ask name, ask email, POST both" had no
+  // way to reach the name it just captured.
+  context.variables ??= {};
+  context.variables[data.fieldSlug] = value;
+
   await supabase.from("contact_custom_fields").upsert(
     {
       contact_id: context.contactId,
@@ -868,19 +913,160 @@ async function executeSubscription(
     .eq("id", context.contactId);
 }
 
+/**
+ * Park the session until the contact replies. When the node carries a timeout,
+ * also schedule the give-up job so the "no reply" branch can run: without it a
+ * contact who walks away is stuck forever with no follow-up.
+ */
+async function executeSmartDelay(
+  supabase: SupabaseClient<Database>,
+  data: SmartDelayNodeData,
+  sessionId: string,
+  nodeId: string,
+  context: FlowExecutionContext
+): Promise<string> {
+  const multipliers: Record<string, number> = {
+    minutes: 60 * 1000,
+    hours: 60 * 60 * 1000,
+    days: 24 * 60 * 60 * 1000,
+  };
+  const timeoutMs = data?.timeout
+    ? data.timeout * (multipliers[data.timeoutUnit] || 60 * 1000)
+    : 0;
+  const waitingUntil =
+    timeoutMs > 0 ? new Date(Date.now() + timeoutMs).toISOString() : null;
+
+  await supabase
+    .from("flow_sessions")
+    .update({
+      waiting_for_input: true,
+      current_node_id: nodeId,
+      waiting_until: waitingUntil,
+    })
+    .eq("id", sessionId);
+
+  if (waitingUntil) {
+    await supabase.from("scheduled_jobs").insert({
+      type: "smart_delay_timeout",
+      payload: {
+        sessionId,
+        nodeId,
+        flowId: context.flowId,
+        channelId: context.channelId,
+        contactId: context.contactId,
+        conversationId: context.conversationId,
+        workspaceId: context.workspaceId,
+        lateConversationId: context.lateConversationId || null,
+        lateAccountId: context.lateAccountId || null,
+      },
+      run_at: waitingUntil,
+    });
+  }
+
+  return "pause";
+}
+
+/**
+ * Run the "contact did not reply" branch of a Smart Delay. Called by the cron
+ * once the node's timeout has passed and the contact is still parked on it.
+ */
+export async function timeoutSmartDelay(
+  supabase: SupabaseClient<Database>,
+  session: Database["public"]["Tables"]["flow_sessions"]["Row"],
+  nodeId: string,
+  context: FlowExecutionContext
+) {
+  // Someone replied in the meantime, or the flow already moved on.
+  if (!session.waiting_for_input || session.current_node_id !== nodeId) return;
+
+  const { data: flow, error: flowError } = await supabase
+    .from("flows")
+    .select("*")
+    .eq("id", session.flow_id)
+    .single();
+
+  if (!flow) {
+    if (flowError && flowError.code !== "PGRST116") {
+      throw new FlowLoadError(
+        `flow ${session.flow_id} could not be loaded: ${flowError.message}`
+      );
+    }
+    await cancelUnresumableSession(
+      supabase,
+      session.id,
+      `flow ${session.flow_id} no longer exists`
+    );
+    return;
+  }
+
+  const nodes = flow.nodes as unknown as FlowNode[];
+  const edges = flow.edges as unknown as FlowEdge[];
+
+  const timeoutEdge = edges.find(
+    (e) => e.source === nodeId && e.sourceHandle === "timeout"
+  );
+
+  // Nothing wired to the timeout output: the wait was meant to be open-ended,
+  // so settle the session instead of leaving it active with no pending job.
+  if (!timeoutEdge) {
+    await completeSession(supabase, session.id);
+    return;
+  }
+
+  const nextNode = nodes.find((n) => n.id === timeoutEdge.target);
+  if (!nextNode) {
+    await completeSession(supabase, session.id);
+    return;
+  }
+
+  const { data: channel } = await supabase
+    .from("channels")
+    .select("platform, late_account_id")
+    .eq("id", context.channelId)
+    .single();
+
+  context.platform = channel?.platform as FlowExecutionContext["platform"];
+  if (channel?.late_account_id && !context.lateAccountId) {
+    context.lateAccountId = channel.late_account_id;
+  }
+
+  if (!context.lateConversationId && context.conversationId) {
+    const { data: conversation } = await supabase
+      .from("conversations")
+      .select("late_conversation_id")
+      .eq("id", context.conversationId)
+      .single();
+
+    if (conversation?.late_conversation_id) {
+      context.lateConversationId = conversation.late_conversation_id;
+    }
+  }
+
+  context.variables = (session.variables as Record<string, string>) || {};
+
+  await supabase
+    .from("flow_sessions")
+    .update({ waiting_for_input: false, waiting_until: null })
+    .eq("id", session.id);
+
+  await traverseNodes(supabase, session.id, nextNode, nodes, edges, context, 0);
+}
+
 function executeABSplit(data: ABSplitNodeData): string {
   const totalWeight = data.paths.reduce((sum, p) => sum + p.weight, 0);
   const random = Math.random() * totalWeight;
 
+  // The builder gives each split output the handle id "split-<index>", so the
+  // engine has to answer with the same id, not the path's display name.
   let cumulative = 0;
   for (let i = 0; i < data.paths.length; i++) {
     cumulative += data.paths[i].weight;
     if (random <= cumulative) {
-      return `handle:${data.paths[i].name}`;
+      return `handle:split-${i}`;
     }
   }
 
-  return `handle:${data.paths[0].name}`;
+  return `handle:split-0`;
 }
 
 /**
