@@ -61,10 +61,14 @@ export async function executeFlow(
       .single();
 
     const displayName = profile?.display_name?.trim();
-    if (displayName) {
-      context.variables.full_name = displayName;
-      context.variables.first_name ??= displayName.split(/\s+/)[0];
-    }
+    // A contact with no name and no username falls back to the raw platform
+    // id, which must never be greeted as a name ("Opa 17829384562, vamos").
+    // Seed blanks instead, and interpolation tidies the leftover punctuation.
+    const usable = displayName && !/^\d{5,}$/.test(displayName);
+    context.variables.full_name = usable ? displayName : "";
+    context.variables.first_name ??= usable
+      ? displayName.split(/\s+/)[0]
+      : "";
   }
 
   // Check for active session waiting for input
@@ -1365,9 +1369,24 @@ function interpolateVariables(
 ): string {
   // Supports dot paths ({{myvar.data.name}}) into object variables (e.g. parsed
   // httpRequest JSON responses). Unresolved paths leave the token literal.
-  return text.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (token, path: string) => {
-    const value = resolveVariablePath(variables, path);
-    if (value === null || value === undefined) return token;
-    return typeof value === "object" ? JSON.stringify(value) : String(value);
-  });
+  let blankedOne = false;
+  const replaced = text.replace(
+    /\{\{(\w+(?:\.\w+)*)\}\}/g,
+    (token, path: string) => {
+      const value = resolveVariablePath(variables, path);
+      if (value === null || value === undefined) return token;
+      const asText =
+        typeof value === "object" ? JSON.stringify(value) : String(value);
+      if (asText === "") blankedOne = true;
+      return asText;
+    }
+  );
+
+  // A variable that resolved to nothing leaves "Opa , vamos" or a double
+  // space behind. Tidy only in that case, so ordinary copy is never touched.
+  if (!blankedOne) return replaced;
+  return replaced
+    .replace(/[ \t]+([,.!?;:])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }
