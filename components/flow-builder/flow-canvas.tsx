@@ -17,7 +17,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { useCallback, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Rocket, Loader2, History, Play, Download, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -190,6 +190,89 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
     },
     [setNodes, setEdges]
   );
+
+  /**
+   * Copies nodes with their configuration, so a Smart Delay set to an hour or
+   * a fully wired message does not have to be rebuilt by hand each time.
+   *
+   * With several nodes selected it copies the wiring between them too, which
+   * is how a whole stretch of a flow gets reused. Triggers are left out: two
+   * published triggers on the same keyword would both answer the same
+   * comment, so a trigger is always placed deliberately, never by copy.
+   *
+   * @param ids nodes to copy; defaults to the current selection
+   */
+  const duplicateNodes = useCallback(
+    (ids?: string[]) => {
+      setNodes((nds) => {
+        const wanted = ids?.length
+          ? nds.filter((n) => ids.includes(n.id))
+          : nds.filter((n) => n.selected);
+        const source = wanted.filter((n) => n.type !== "trigger");
+        if (source.length === 0) return nds;
+
+        const idMap = new Map<string, string>();
+        const copies = source.map((n) => {
+          const newId = getNodeId();
+          idMap.set(n.id, newId);
+          return {
+            ...n,
+            id: newId,
+            // structuredClone so the copy's config is independent: a shared
+            // reference would make editing the copy change the original.
+            data: structuredClone(n.data),
+            position: { x: n.position.x + 48, y: n.position.y + 48 },
+            selected: true,
+            dragging: false,
+          };
+        });
+
+        // Only edges fully inside the selection: a copied node must not
+        // silently splice itself into the original's wiring.
+        setEdges((eds) => [
+          ...eds,
+          ...eds
+            .filter((e) => idMap.has(e.source) && idMap.has(e.target))
+            .map((e) => {
+              const src = idMap.get(e.source)!;
+              const tgt = idMap.get(e.target)!;
+              return {
+                ...e,
+                id: `xy-edge__${src}${e.sourceHandle ?? ""}-${tgt}`,
+                source: src,
+                target: tgt,
+              };
+            }),
+        ]);
+
+        setSelectedNodeId(copies.length === 1 ? copies[0].id : null);
+        return [...nds.map((n) => ({ ...n, selected: false })), ...copies];
+      });
+    },
+    [setNodes, setEdges]
+  );
+
+  // Cmd/Ctrl+D duplicates the selection. Prevented first, because the browser
+  // binds that to "bookmark this page".
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "d")
+        return;
+
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable;
+      if (typing) return;
+
+      event.preventDefault();
+      duplicateNodes();
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [duplicateNodes]);
 
   const saveFlow = useCallback(
     async (status?: FlowStatus) => {
@@ -476,6 +559,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
             onChange={onNodeDataChange}
             onClose={closeSidebar}
             onDelete={deleteNode}
+            onDuplicate={(nodeId) => duplicateNodes([nodeId])}
           />
         )}
         {versionPanelOpen && (

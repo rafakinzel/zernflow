@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, Download, Loader2, GitBranch, FileJson, X, Trash2 } from "lucide-react";
+import { Upload, Download, Loader2, GitBranch, FileJson, X, Trash2, Copy } from "lucide-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Json } from "@/lib/types/database";
 
@@ -64,6 +64,66 @@ export function ExportFlowButton({
     >
       <Download className="h-3.5 w-3.5" />
     </button>
+  );
+}
+
+/**
+ * Copies a flow as a draft and opens the copy.
+ *
+ * Opening it is the point: the copy exists to be edited (event name, group
+ * link, ActiveCampaign list and tag), so landing on the list and hunting for
+ * "(cópia)" would just add a step.
+ */
+export function DuplicateFlowButton({
+  flow,
+}: {
+  flow: { id: string; name: string };
+}) {
+  const router = useRouter();
+  const [duplicating, setDuplicating] = useState(false);
+
+  async function handleDuplicate() {
+    setDuplicating(true);
+    try {
+      const res = await fetch(`/api/v1/flows/${flow.id}/duplicate`, {
+        method: "POST",
+      });
+      const body = await res.json();
+
+      if (!res.ok || !body?.id) {
+        alert(body?.error ?? "Não consegui duplicar o fluxo.");
+        return;
+      }
+
+      router.push(`/dashboard/flows/${body.id}`);
+    } catch {
+      alert("Não consegui duplicar o fluxo.");
+    } finally {
+      setDuplicating(false);
+    }
+  }
+
+  return (
+    // Same reason as the delete button: this sits inside the card's <Link>.
+    <span
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+    >
+      <button
+        onClick={handleDuplicate}
+        disabled={duplicating}
+        title="Duplicar fluxo"
+        className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+      >
+        {duplicating ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" />
+        )}
+      </button>
+    </span>
   );
 }
 

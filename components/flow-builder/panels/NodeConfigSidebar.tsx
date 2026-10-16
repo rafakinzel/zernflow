@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
-import { X, Trash2, Zap, MessageSquare, GitBranch, Clock, Cog, Sparkles } from "lucide-react";
+import { X, Trash2, Copy, Zap, MessageSquare, GitBranch, Clock, Cog, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Edge, Node } from "@xyflow/react";
 
@@ -19,6 +19,7 @@ interface NodeConfigSidebarProps {
   onChange: (nodeId: string, data: Record<string, unknown>) => void;
   onClose: () => void;
   onDelete: (nodeId: string) => void;
+  onDuplicate: (nodeId: string) => void;
 }
 
 // BFS backwards over edges; the visited set makes cycles terminate.
@@ -138,7 +139,7 @@ const nodeTypeConfig: Record<string, { label: string; icon: typeof Cog; color: s
   },
 };
 
-export function NodeConfigSidebar({ node, nodes, edges, onChange, onClose, onDelete }: NodeConfigSidebarProps) {
+export function NodeConfigSidebar({ node, nodes, edges, onChange, onClose, onDelete, onDuplicate }: NodeConfigSidebarProps) {
   const nodeType = node.type || "action";
   const config = nodeTypeConfig[nodeType] || nodeTypeConfig.action;
   const Icon = config.icon;
@@ -220,6 +221,15 @@ export function NodeConfigSidebar({ node, nodes, edges, onChange, onClose, onDel
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onDuplicate(node.id)}
+            className="rounded-lg p-1.5 text-muted-foreground/60 hover:bg-muted hover:text-foreground disabled:opacity-40"
+            title="Duplicar este nó com a configuração (Ctrl+D)"
+            disabled={nodeType === "trigger"}
+          >
+            <Copy className="h-4 w-4" />
+          </button>
           <button
             type="button"
             onClick={() => onDelete(node.id)}
