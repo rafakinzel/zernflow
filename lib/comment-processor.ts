@@ -21,7 +21,30 @@ interface CommentKeywordConfig {
     matchType?: "exact" | "contains" | "startsWith";
   }>;
   postIds?: string[];
+  /** Legacy single reply, still written by the Growth tab. */
   replyText?: string;
+  /** Variations set on the trigger node; one is picked per comment. */
+  replyTexts?: string[];
+}
+
+/**
+ * Picks the public reply to post under a comment. Several variations can be
+ * set because Instagram throttles an account that keeps posting the identical
+ * reply, so one is chosen at random per comment.
+ */
+export function pickCommentReply(
+  config: Pick<CommentKeywordConfig, "replyText" | "replyTexts">,
+  random: () => number = Math.random,
+): string | null {
+  const candidates = [
+    ...(Array.isArray(config.replyTexts) ? config.replyTexts : []),
+    ...(typeof config.replyText === "string" ? [config.replyText] : []),
+  ]
+    .map((t) => (typeof t === "string" ? t.trim() : ""))
+    .filter((t) => t.length > 0);
+
+  if (candidates.length === 0) return null;
+  return candidates[Math.floor(random() * candidates.length)];
 }
 
 /**
@@ -168,7 +191,8 @@ export async function processComment({
     }
 
     let replySent = false;
-    if (config.replyText) {
+    const replyText = pickCommentReply(config);
+    if (replyText) {
       const { data: workspace } = await supabase
         .from("workspaces")
         .select("late_api_key_encrypted")
@@ -182,7 +206,7 @@ export async function processComment({
             path: { postId: comment.postId },
             body: {
               accountId: channel.late_account_id,
-              message: config.replyText,
+              message: replyText,
               commentId: comment.id,
             },
           });

@@ -56,6 +56,15 @@ export function buildDesiredTriggers(
         if (Array.isArray(postIds) && postIds.length > 0) config.postIds = postIds;
         const replyText = data.replyText ?? nodeConfig.replyText;
         if (typeof replyText === "string" && replyText.trim()) config.replyText = replyText;
+        // The trigger panel edits the public reply as a list of variations;
+        // the matcher picks one per comment.
+        const replyTexts = data.commentReplies ?? nodeConfig.replyTexts;
+        if (Array.isArray(replyTexts)) {
+          const cleaned = replyTexts
+            .map((t: unknown) => (typeof t === "string" ? t.trim() : ""))
+            .filter((t: string) => t.length > 0);
+          if (cleaned.length > 0) config.replyTexts = cleaned;
+        }
       } else if (type === "postback" || type === "quick_reply") {
         const payload = data.payload ?? nodeConfig.payload;
         if (payload !== undefined) config.payload = payload;
@@ -70,10 +79,15 @@ export function buildDesiredTriggers(
         priority: typeof nodeConfig.priority === "number" ? nodeConfig.priority : 0,
       };
 
-      // postIds (post scoping) and replyText (the public reply on the comment)
-      // are dropped from the DM row: a DM has neither a post nor a comment.
+      // postIds (post scoping) and the public replies are dropped from the DM
+      // row: a DM has neither a post nor a comment.
       if (type === "comment_keyword" && data.alsoMatchInDms === true && config.keywords?.length) {
-        const { postIds: _postIds, replyText: _replyText, ...dmConfig } = config;
+        const {
+          postIds: _postIds,
+          replyText: _replyText,
+          replyTexts: _replyTexts,
+          ...dmConfig
+        } = config;
         return [row, { ...row, type: "keyword" as TriggerType, config: dmConfig }];
       }
 

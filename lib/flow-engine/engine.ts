@@ -165,26 +165,8 @@ export async function executeFlow(
   const triggerNode = nodes.find((n) => n.type === "trigger");
   if (!triggerNode) return;
 
-  // The public reply under the comment is configured on the trigger itself,
-  // since it only applies to comment-triggered runs. Several variations can be
-  // set and one is picked at random: Instagram throttles an account that keeps
-  // posting the identical reply.
-  const replies = (
-    (triggerNode.data as { commentReplies?: unknown }).commentReplies ?? []
-  ) as unknown[];
-  const usableReplies = replies
-    .map((r) => (typeof r === "string" ? r.trim() : ""))
-    .filter((r) => r.length > 0);
-  if (usableReplies.length > 0 && context.variables?.comment_id) {
-    const pick =
-      usableReplies[Math.floor(Math.random() * usableReplies.length)];
-    try {
-      await executeCommentReply(supabase, { text: pick }, context);
-    } catch (err) {
-      // A failed public reply must never stop the DM the contact is waiting for.
-      console.error("Trigger comment reply failed:", err);
-    }
-  }
+  // The public reply under the comment is posted by the comment processor
+  // before the flow runs (see pickCommentReply), so nothing to do here.
 
   // Get the first connected node
   const firstEdge = edges.find((e) => e.source === triggerNode.id);

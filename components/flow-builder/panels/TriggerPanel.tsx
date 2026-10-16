@@ -16,6 +16,7 @@ interface TriggerPanelData {
   payload?: string;
   alsoMatchInDms?: boolean;
   commentReplies?: string[];
+  postIds?: string[];
   [key: string]: unknown;
 }
 
@@ -63,6 +64,18 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
       });
     },
     [data, commentReplies, onChange]
+  );
+
+  const postIds = data.postIds || [];
+  const setPostIds = useCallback(
+    (raw: string) => {
+      const ids = raw
+        .split(/[\s,]+/)
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0);
+      onChange({ ...data, postIds: ids });
+    },
+    [data, onChange]
   );
 
   const handleTriggerTypeChange = useCallback(
@@ -304,7 +317,28 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
           <p className="mt-1.5 text-xs text-muted-foreground">
             {commentReplies.length > 1
               ? `One of the ${commentReplies.length} is picked at random each time.`
-              : "Optional. Add a few variations: Instagram throttles an account that keeps posting the identical reply. Supports variables like {{first_name}}."}
+              : "Optional. Add a few variations: Instagram throttles an account that keeps posting the identical reply."}
+          </p>
+        </div>
+      )}
+
+      {/* Post scoping. Empty means every post, which is the common case. */}
+      {triggerType === "comment_keyword" && (
+        <div>
+          <label className="mb-2 block text-xs font-semibold text-foreground">
+            Limit to specific posts
+          </label>
+          <textarea
+            value={postIds.join("\n")}
+            onChange={(e) => setPostIds(e.target.value)}
+            placeholder="17912345678901234"
+            rows={3}
+            className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          />
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {postIds.length > 0
+              ? `Only comments on ${postIds.length === 1 ? "this post" : `these ${postIds.length} posts`} run this flow.`
+              : "Leave empty to run on comments from any post. One post id per line; the id of a post shows up in Growth once it receives its first comment."}
           </p>
         </div>
       )}
