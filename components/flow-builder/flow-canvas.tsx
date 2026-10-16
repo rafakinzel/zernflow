@@ -19,7 +19,7 @@ import "@xyflow/react/dist/style.css";
 
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Rocket, Loader2, History, Play, Download, Trash2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Save, Rocket, Loader2, History, Play, Download, Trash2, AlertTriangle, Pause } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { createClient } from "@/lib/supabase/client";
@@ -101,6 +101,9 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
   /** The row's updated_at as this tab loaded it; the guard against stale saves. */
   const [baseUpdatedAt, setBaseUpdatedAt] = useState(flow.updated_at);
   const [conflict, setConflict] = useState(false);
+  /** Kept locally so the badge and the Pause button react without a reload. */
+  const [flowStatus, setFlowStatus] = useState<FlowStatus>(flow.status);
+  const [pausing, setPausing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -326,6 +329,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
         }
 
         setBaseUpdatedAt(saved[0].updated_at);
+        if (status) setFlowStatus(status);
         setSaveError(null);
         setLastSaved(new Date());
         return true;
@@ -359,6 +363,24 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
       setDeleting(false);
     }
   }, [flow.id, router]);
+  /**
+   * Takes the flow out of circulation by moving it back to draft.
+   *
+   * Both trigger matchers require a published flow, so this stops new people
+   * entering through a keyword or a comment, and stops the public reply under
+   * the comment with them. Runs already in progress are left alone: someone
+   * mid-conversation should get the rest of their answers, not silence.
+   */
+  const handlePause = useCallback(async () => {
+    setPausing(true);
+    try {
+      const saved = await saveFlow("draft");
+      if (saved) router.refresh();
+    } finally {
+      setPausing(false);
+    }
+  }, [saveFlow, router]);
+
   const handlePublish = useCallback(async () => {
     setPublishing(true);
     try {
@@ -384,7 +406,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
     } finally {
       setPublishing(false);
     }
-  }, [saveFlow, flow.id]);
+  }, [saveFlow, flow.id, router]);
 
   return (
     <div className="flex h-full flex-col">
@@ -428,14 +450,18 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
           <span
             className={cn(
               "inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium",
-              flow.status === "published"
+              flowStatus === "published"
                 ? "bg-emerald-100 text-emerald-800"
-                : flow.status === "archived"
+                : flowStatus === "archived"
                   ? "bg-amber-100 text-amber-800"
                   : "bg-muted text-muted-foreground"
             )}
           >
-            {flow.status}
+            {flowStatus === "published"
+              ? "no ar"
+              : flowStatus === "draft"
+                ? "pausado"
+                : flowStatus}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -521,6 +547,21 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
             )}
             Save
           </button>
+          {flowStatus === "published" && (
+            <button
+              onClick={handlePause}
+              disabled={pausing || publishing}
+              title="Para de receber novos leads. Quem já está no meio da conversa termina."
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
+            >
+              {pausing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Pause className="h-3.5 w-3.5" />
+              )}
+              Pausar
+            </button>
+          )}
           <button
             onClick={handlePublish}
             disabled={publishing}
