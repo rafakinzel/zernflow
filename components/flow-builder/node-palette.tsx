@@ -16,7 +16,6 @@ import {
   Sparkles,
   ListOrdered,
   MessageCircleReply,
-  Send,
 } from "lucide-react";
 import type { DragEvent } from "react";
 
@@ -61,13 +60,6 @@ const categories: PaletteCategory[] = [
         label: "Comment Reply",
         icon: MessageCircleReply,
         actionType: "commentReply",
-      },
-      {
-        type: "action",
-        nodeType: "privateReply",
-        label: "Private Reply",
-        icon: Send,
-        actionType: "privateReply",
       },
     ],
   },

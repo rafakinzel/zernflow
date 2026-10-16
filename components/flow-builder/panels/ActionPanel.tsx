@@ -86,7 +86,8 @@ function CommentReplyConfig({ data, onChange }: ActionSubPanelProps) {
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
           Everyone sees this one, so it is what makes other people comment the
-          keyword too. Only runs on comment-triggered flows.
+          keyword too. The DM is sent by the Send Message node as usual. Only
+          runs on comment-triggered flows.
         </p>
       </div>
 
