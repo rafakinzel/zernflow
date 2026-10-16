@@ -38,6 +38,17 @@ export async function executeFlow(
     context.variables.message ??= context.incomingMessage.text;
   }
 
+  // A button or quick-reply tap arrives as its visible label, so {{message}}
+  // holds the label and a condition written against it breaks the day someone
+  // rewords the button. Expose the payload separately as the stable handle.
+  const tappedPayload =
+    context.incomingMessage.quickReplyPayload ||
+    context.incomingMessage.postbackPayload ||
+    context.incomingMessage.callbackData;
+  if (tappedPayload) {
+    context.variables.payload = tappedPayload;
+  }
+
   // Seed the contact's profile name so a flow can greet by name before it has
   // asked for one, the way the platforms' own tools do. {{first_name}} is the
   // first word of the display name; a later Set Field overwrites it with
@@ -217,12 +228,17 @@ export async function resumeSession(
   // The resume is driven by a fresh reply; make {{message}} reflect it. A tap
   // on a button or quick reply carries no text, so fall back to its payload —
   // otherwise a condition node can never tell which button was pressed.
-  const replyText =
-    context.incomingMessage.text ||
+  const tapped =
     context.incomingMessage.quickReplyPayload ||
-    context.incomingMessage.postbackPayload;
+    context.incomingMessage.postbackPayload ||
+    context.incomingMessage.callbackData;
+  const replyText = context.incomingMessage.text || tapped;
   if (replyText) {
     context.variables.message = replyText;
+  }
+  // The payload is the stable handle for a tap; the label can be reworded.
+  if (tapped) {
+    context.variables.payload = tapped;
   }
 
   // The contact replied, so the Smart Delay give-up job must not fire later

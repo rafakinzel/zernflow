@@ -58,7 +58,7 @@ function getFlowVariables({
 }): string[] {
   // first_name / full_name come from the contact's platform profile and are
   // seeded on every run, so they can be used before the flow asks for a name.
-  const variables = ["message", "first_name", "full_name"];
+  const variables = ["message", "payload", "first_name", "full_name"];
 
   const triggerNode = nodes.find((n) => n.type === "trigger");
   const triggerType = (triggerNode?.data as Record<string, unknown> | undefined)
