@@ -148,6 +148,35 @@ describe("listing", () => {
       { id: "22", name: "sem tipo" },
     ]);
   });
+
+  it("pages through tags until a short page comes back", async () => {
+    const full = Array.from({ length: 100 }, (_, i) => ({
+      id: String(i + 1),
+      tag: `tag-${i + 1}`,
+      tagType: "contact",
+    }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ tags: full }),
+        text: async () => "",
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ tags: [{ id: "101", tag: "ultima" }] }),
+        text: async () => "",
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tags = await listTags(credentials);
+
+    expect(tags).toHaveLength(101);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toContain("offset=100");
+  });
 });
 
 describe("addTagToContact", () => {

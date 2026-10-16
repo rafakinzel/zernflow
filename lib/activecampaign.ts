@@ -196,12 +196,29 @@ export async function syncContact(
 export async function listTags(
   credentials: ActiveCampaignCredentials
 ): Promise<ACTag[]> {
-  const data = await request<{
-    tags?: Array<{ id?: string; tag?: string; tagType?: string }>;
-  }>(credentials, "tags?limit=100");
-  return (data.tags ?? [])
-    .filter((t) => t.id && (t.tagType ?? "contact") === "contact")
-    .map((t) => ({ id: String(t.id), name: t.tag ?? `Tag ${t.id}` }));
+  // 100 is the endpoint's maximum page size and an account can hold far more,
+  // so page until a short page comes back. The cap stops a runaway loop from
+  // a vendor that keeps answering full pages.
+  const PAGE = 100;
+  const MAX_PAGES = 20;
+  const tags: ACTag[] = [];
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const data = await request<{
+      tags?: Array<{ id?: string; tag?: string; tagType?: string }>;
+    }>(credentials, `tags?limit=${PAGE}&offset=${page * PAGE}`);
+
+    const rows = data.tags ?? [];
+    for (const t of rows) {
+      if (!t.id) continue;
+      if ((t.tagType ?? "contact") !== "contact") continue;
+      tags.push({ id: String(t.id), name: t.tag ?? `Tag ${t.id}` });
+    }
+
+    if (rows.length < PAGE) break;
+  }
+
+  return tags;
 }
 
 /**

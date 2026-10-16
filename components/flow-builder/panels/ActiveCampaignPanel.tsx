@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, Loader2, Plus, RefreshCw, X } from "lucide-react";
+import { AlertCircle, Check, Loader2, Plus, RefreshCw, Search, X } from "lucide-react";
 
 interface ACList {
   id: string;
@@ -59,6 +59,26 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
   const [lists, setLists] = useState<ACList[]>([]);
   const [fields, setFields] = useState<ACField[]>([]);
   const [tags, setTags] = useState<ACTag[]>([]);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [tagQuery, setTagQuery] = useState("");
+
+  const selectedTags = useMemo(
+    () =>
+      tagIds.map(
+        (id) => tags.find((t) => t.id === id) ?? { id, name: `Tag ${id}` }
+      ),
+    [tagIds, tags]
+  );
+
+  // Capped at 200 rows: an account can hold thousands of tags, and painting
+  // them all makes the panel crawl. Narrowing the search is the way down.
+  const visibleTags = useMemo(() => {
+    const q = tagQuery.trim().toLowerCase();
+    const matched = q
+      ? tags.filter((t) => t.name.toLowerCase().includes(q))
+      : tags;
+    return matched.slice(0, 200);
+  }, [tags, tagQuery]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -192,41 +212,112 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
 
       <div>
         <label className="text-xs font-medium text-foreground">Tags</label>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Tags que já existem na sua conta. Clique para marcar.
-        </p>
 
-        {tags.length === 0 ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            {loading
-              ? "Carregando suas tags."
-              : "Nenhuma tag encontrada na sua conta."}
-          </p>
-        ) : (
+        {selectedTags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {tags.map((tag) => {
-              const on = tagIds.includes(tag.id);
-              return (
+            {selectedTags.map((tag) => (
+              <span
+                key={tag.id}
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-500 bg-emerald-500/10 py-1 pl-2.5 pr-1 text-xs text-emerald-500"
+              >
+                {tag.name}
                 <button
-                  key={tag.id}
                   type="button"
                   onClick={() =>
-                    update({
-                      tagIds: on
-                        ? tagIds.filter((id) => id !== tag.id)
-                        : [...tagIds, tag.id],
-                    })
+                    update({ tagIds: tagIds.filter((id) => id !== tag.id) })
                   }
-                  className={
-                    on
-                      ? "rounded-full border border-emerald-500 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-500"
-                      : "rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:border-emerald-400 hover:text-emerald-500"
-                  }
+                  className="rounded-full p-0.5 hover:bg-emerald-500/20"
+                  aria-label={`Remover ${tag.name}`}
                 >
-                  {tag.name}
+                  <X className="h-3 w-3" />
                 </button>
-              );
-            })}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {!tagsOpen ? (
+          <button
+            type="button"
+            onClick={() => setTagsOpen(true)}
+            className="mt-2 w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-emerald-400 hover:text-emerald-500"
+          >
+            {selectedTags.length > 0 ? "Mudar tags" : "Escolher tags"}
+          </button>
+        ) : (
+          <div className="mt-2 rounded-lg border border-border bg-card p-2">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground/70" />
+                <input
+                  type="text"
+                  value={tagQuery}
+                  onChange={(e) => setTagQuery(e.target.value)}
+                  placeholder="Buscar tag pelo nome"
+                  autoFocus
+                  className="w-full rounded-lg border border-border bg-background py-1.5 pl-7 pr-2 text-xs"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setTagsOpen(false);
+                  setTagQuery("");
+                }}
+                className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+              >
+                Pronto
+              </button>
+            </div>
+
+            <div className="mt-2 max-h-52 overflow-y-auto">
+              {visibleTags.length === 0 ? (
+                <p className="px-1 py-3 text-center text-xs text-muted-foreground">
+                  {loading
+                    ? "Carregando suas tags."
+                    : tags.length === 0
+                      ? "Nenhuma tag encontrada na sua conta."
+                      : "Nenhuma tag com esse nome."}
+                </p>
+              ) : (
+                visibleTags.map((tag) => {
+                  const on = tagIds.includes(tag.id);
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() =>
+                        update({
+                          tagIds: on
+                            ? tagIds.filter((id) => id !== tag.id)
+                            : [...tagIds, tag.id],
+                        })
+                      }
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted"
+                    >
+                      <span
+                        className={
+                          on
+                            ? "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-emerald-500 bg-emerald-500"
+                            : "h-3.5 w-3.5 shrink-0 rounded border border-border"
+                        }
+                      >
+                        {on && (
+                          <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
+                        )}
+                      </span>
+                      <span className="truncate text-foreground">{tag.name}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            {tags.length > 0 && (
+              <p className="mt-1 px-1 text-[11px] text-muted-foreground">
+                {visibleTags.length} de {tags.length} tags
+              </p>
+            )}
           </div>
         )}
       </div>
