@@ -116,23 +116,33 @@ export async function executeFlow(
   // flow asked, and skip the fresh-start work below (the public reply).
   // A resume (cron, or a reply that matched no trigger) passes no triggerId.
   if (context.triggerId) {
+    // Every active run is retired, not only the ones waiting on a reply. A
+    // run sitting inside a timed Delay has waiting_for_input false, so the
+    // old filter left it alive; its cron resume then parked it on a question
+    // too and the contact ended up with two waiting sessions at once.
     await supabase
       .from("flow_sessions")
-      .update({ status: "cancelled" })
+      .update({ status: "cancelled", waiting_for_input: false, waiting_until: null })
       .eq("contact_id", context.contactId)
       .eq("channel_id", context.channelId)
-      .eq("status", "active")
-      .eq("waiting_for_input", true);
+      .eq("status", "active");
   } else {
-    const { data: activeSession } = await supabase
+    // Newest first, and never maybeSingle(): with two waiting rows that
+    // helper returns an error instead of a row, and the caller here reads
+    // only `data`. The reply was then dropped in silence and the contact was
+    // stuck forever. Belt and braces, since the cancel above should now keep
+    // duplicates from existing at all.
+    const { data: waiting } = await supabase
       .from("flow_sessions")
       .select("*")
       .eq("contact_id", context.contactId)
       .eq("channel_id", context.channelId)
       .eq("status", "active")
       .eq("waiting_for_input", true)
-      .maybeSingle();
+      .order("updated_at", { ascending: false })
+      .limit(1);
 
+    const activeSession = waiting?.[0];
     if (activeSession) {
       return resumeSession(supabase, activeSession, context);
     }

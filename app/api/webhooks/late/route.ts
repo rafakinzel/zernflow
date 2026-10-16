@@ -317,14 +317,20 @@ async function processMessageEvent(
         // for. executeFlow resumes when it gets no triggerId; without this
         // branch those sessions waited forever, because a reply like "Rafa"
         // matches no keyword and the engine was never called at all.
-        const { data: waitingSession } = await supabase
+        // Newest first, never maybeSingle(): that helper errors instead of
+        // returning a row when two sessions match, and this caller reads only
+        // `data`, so the contact's reply vanished and their run hung.
+        const { data: waitingSessions } = await supabase
           .from("flow_sessions")
           .select("id, flow_id")
           .eq("contact_id", contactId)
           .eq("channel_id", channel.id)
           .eq("status", "active")
           .eq("waiting_for_input", true)
-          .maybeSingle();
+          .order("updated_at", { ascending: false })
+          .limit(1);
+
+        const waitingSession = waitingSessions?.[0];
 
         if (waitingSession) {
           try {
