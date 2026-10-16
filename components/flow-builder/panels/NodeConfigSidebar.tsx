@@ -36,6 +36,17 @@ function getUpstreamNodeIds(nodeId: string, edges: Edge[]): Set<string> {
   return upstream;
 }
 
+/**
+ * Actions-category nodes are saved as type "action" with the real kind in
+ * data.actionType, so matching on node.type alone misses every one of them.
+ */
+function realNodeType(node: Node): string {
+  if (node.type !== "action") return node.type ?? "";
+  return (
+    ((node.data as Record<string, unknown>)?.actionType as string) ?? "action"
+  );
+}
+
 function getFlowVariables({
   node,
   nodes,
@@ -45,7 +56,9 @@ function getFlowVariables({
   nodes: Node[];
   edges: Edge[];
 }): string[] {
-  const variables = ["message"];
+  // first_name / full_name come from the contact's platform profile and are
+  // seeded on every run, so they can be used before the flow asks for a name.
+  const variables = ["message", "first_name", "full_name"];
 
   const triggerNode = nodes.find((n) => n.type === "trigger");
   const triggerType = (triggerNode?.data as Record<string, unknown> | undefined)
@@ -57,16 +70,29 @@ function getFlowVariables({
   // Producer-derived variables are only offered when the producing node runs before this one.
   const upstreamIds = getUpstreamNodeIds(node.id, edges);
 
-  if (nodes.some((n) => n.type === "aiResponse" && upstreamIds.has(n.id))) {
+  if (nodes.some((n) => realNodeType(n) === "aiResponse" && upstreamIds.has(n.id))) {
     variables.push("ai_response");
   }
 
   for (const n of nodes) {
-    if (n.type !== "httpRequest" || !upstreamIds.has(n.id)) continue;
-    const responseVariable = (n.data as Record<string, unknown>)
-      .responseVariable as string | undefined;
-    if (responseVariable && !variables.includes(responseVariable)) {
-      variables.push(responseVariable);
+    if (!upstreamIds.has(n.id)) continue;
+    const type = realNodeType(n);
+    const data = n.data as Record<string, unknown>;
+
+    if (type === "httpRequest") {
+      const responseVariable = data.responseVariable as string | undefined;
+      if (responseVariable && !variables.includes(responseVariable)) {
+        variables.push(responseVariable);
+      }
+    }
+
+    // A Set Field node also writes its slug as a variable, so an answer
+    // captured earlier in the flow can be reused further down.
+    if (type === "setCustomField") {
+      const fieldSlug = data.fieldSlug as string | undefined;
+      if (fieldSlug && !variables.includes(fieldSlug)) {
+        variables.push(fieldSlug);
+      }
     }
   }
 
