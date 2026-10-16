@@ -71,18 +71,32 @@ export async function executeFlow(
       : "";
   }
 
-  // Check for active session waiting for input
-  const { data: activeSession } = await supabase
-    .from("flow_sessions")
-    .select("*")
-    .eq("contact_id", context.contactId)
-    .eq("channel_id", context.channelId)
-    .eq("status", "active")
-    .eq("waiting_for_input", true)
-    .single();
+  // A matched trigger means the contact sent the keyword, which reads as
+  // "start over", so retire whatever run they were parked in. Resuming
+  // instead would swallow the keyword as the answer to the last question the
+  // flow asked, and skip the fresh-start work below (the public reply).
+  // A resume (cron, or a reply that matched no trigger) passes no triggerId.
+  if (context.triggerId) {
+    await supabase
+      .from("flow_sessions")
+      .update({ status: "cancelled" })
+      .eq("contact_id", context.contactId)
+      .eq("channel_id", context.channelId)
+      .eq("status", "active")
+      .eq("waiting_for_input", true);
+  } else {
+    const { data: activeSession } = await supabase
+      .from("flow_sessions")
+      .select("*")
+      .eq("contact_id", context.contactId)
+      .eq("channel_id", context.channelId)
+      .eq("status", "active")
+      .eq("waiting_for_input", true)
+      .maybeSingle();
 
-  if (activeSession) {
-    return resumeSession(supabase, activeSession, context);
+    if (activeSession) {
+      return resumeSession(supabase, activeSession, context);
+    }
   }
 
   // Load flow
