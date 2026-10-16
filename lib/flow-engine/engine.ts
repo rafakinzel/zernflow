@@ -834,15 +834,51 @@ async function executeSetField(
   data: SetFieldNodeData,
   context: FlowExecutionContext
 ) {
-  // Find field definition
-  const { data: fieldDef } = await supabase
+  if (!data.fieldSlug) return;
+
+  // Find field definition, creating it when the flow references a slug the
+  // workspace has not defined yet. Returning early instead made the node a
+  // silent no-op: the flow looked right, captured nothing, and said nothing.
+  let { data: fieldDef } = await supabase
     .from("custom_field_definitions")
     .select("id")
     .eq("workspace_id", context.workspaceId)
     .eq("slug", data.fieldSlug)
-    .single();
+    .maybeSingle();
 
-  if (!fieldDef) return;
+  if (!fieldDef) {
+    const { data: created, error: createError } = await supabase
+      .from("custom_field_definitions")
+      .insert({
+        workspace_id: context.workspaceId,
+        slug: data.fieldSlug,
+        name: data.fieldSlug,
+        type: "text",
+      })
+      .select("id")
+      .single();
+
+    if (created) {
+      fieldDef = created;
+    } else {
+      // A concurrent run may have inserted it first (workspace_id+slug is
+      // unique); re-read before giving up.
+      const { data: existing } = await supabase
+        .from("custom_field_definitions")
+        .select("id")
+        .eq("workspace_id", context.workspaceId)
+        .eq("slug", data.fieldSlug)
+        .maybeSingle();
+      if (!existing) {
+        console.error(
+          `Could not create custom field "${data.fieldSlug}":`,
+          createError
+        );
+        return;
+      }
+      fieldDef = existing;
+    }
+  }
 
   const value = interpolateVariables(data.value, context.variables || {});
 
