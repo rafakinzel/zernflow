@@ -19,7 +19,7 @@ import "@xyflow/react/dist/style.css";
 
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Rocket, Loader2, History, Play, Download, Trash2 } from "lucide-react";
+import { ArrowLeft, Save, Rocket, Loader2, History, Play, Download, Trash2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { createClient } from "@/lib/supabase/client";
@@ -98,6 +98,9 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [testPanelOpen, setTestPanelOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  /** The row's updated_at as this tab loaded it; the guard against stale saves. */
+  const [baseUpdatedAt, setBaseUpdatedAt] = useState(flow.updated_at);
+  const [conflict, setConflict] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -287,7 +290,6 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
           name: flowName,
           nodes: nodes as unknown as Json,
           edges: edges as unknown as Json,
-          updated_at: new Date().toISOString(),
         };
 
         if (status) {
@@ -297,26 +299,42 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
           }
         }
 
-        const { error } = await supabase
+        // This canvas holds the whole graph in memory and writes it whole, so
+        // a save made from a stale tab erases everything another editor did in
+        // between. Matching on the updated_at this tab loaded makes the write
+        // land only if nothing changed since. `updated_at` is stamped by a
+        // database trigger, so it moves for every writer, not just this one.
+        const { data: saved, error } = await supabase
           .from("flows")
           .update(update)
-          .eq("id", flow.id);
+          .eq("id", flow.id)
+          .eq("updated_at", baseUpdatedAt)
+          .select("updated_at");
 
         if (error) {
           console.error("Failed to save flow:", error);
           setSaveError("Failed to save");
           setTimeout(() => setSaveError(null), 3000);
-          return;
+          return false;
         }
 
+        if (!saved || saved.length === 0) {
+          // No row matched: the flow moved on without this tab. Refusing is
+          // the whole point, so surface it and stop rather than retrying.
+          setConflict(true);
+          return false;
+        }
+
+        setBaseUpdatedAt(saved[0].updated_at);
         setSaveError(null);
         setLastSaved(new Date());
+        return true;
       } finally {
         setSaving(false);
         setPublishing(false);
       }
     },
-    [flowName, nodes, edges, flow.id, supabase]
+    [flowName, nodes, edges, flow.id, supabase, baseUpdatedAt]
   );
 
   const handleSave = useCallback(() => saveFlow(), [saveFlow]);
@@ -344,8 +362,12 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
   const handlePublish = useCallback(async () => {
     setPublishing(true);
     try {
-      // First save the current state
-      await saveFlow();
+      // Publishing starts with a save, so a refused save must stop the
+      // publish too. Carrying on would put this tab's stale graph live,
+      // which is the exact accident the guard exists to prevent.
+      const saved = await saveFlow();
+      if (!saved) return;
+
       // Then call the publish API which increments version and saves snapshot
       const res = await fetch(`/api/v1/flows/${flow.id}/publish`, {
         method: "POST",
@@ -366,6 +388,24 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
 
   return (
     <div className="flex h-full flex-col">
+      {conflict && (
+        <div className="flex flex-wrap items-center gap-3 border-b border-amber-500/40 bg-amber-500/10 px-4 py-2.5">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+          <p className="flex-1 text-sm text-foreground">
+            Esse fluxo mudou depois que você abriu esta aba, então não salvei
+            para não apagar a alteração mais nova. Recarregue para pegar a
+            versão atual.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded-lg bg-foreground px-3 py-1.5 text-xs font-medium text-background"
+          >
+            Recarregar
+          </button>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2">
         <div className="flex items-center gap-3">
