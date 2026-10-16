@@ -30,6 +30,40 @@ const fieldOptions = [
   { value: "last_interaction", label: "Last Interaction" },
 ];
 
+/** Field types that need a name: which tag, which field, which variable. */
+const namePlaceholders: Record<string, string> = {
+  tag: "Tag name, e.g. lead",
+  custom_field: "Field slug, e.g. email",
+  variable: "Variable name, e.g. message",
+};
+
+/**
+ * The engine reads one `field` string ("tag:lead", "variable:message", or a
+ * bare custom-field slug) while the panel edits it as a type plus a name.
+ * These keep the halves in sync; without them the panel saved a bare
+ * "variable" that matched nothing, so every such condition took the No branch.
+ */
+function splitField(field: string): { type: string; name: string } {
+  if (field.startsWith("tag:")) return { type: "tag", name: field.slice(4) };
+  if (field.startsWith("variable:"))
+    return { type: "variable", name: field.slice(9) };
+  if (
+    field === "platform" ||
+    field === "is_subscribed" ||
+    field === "last_interaction" ||
+    field === ""
+  )
+    return { type: field || "tag", name: "" };
+  return { type: "custom_field", name: field };
+}
+
+function joinField(type: string, name: string): string {
+  if (type === "tag") return `tag:${name}`;
+  if (type === "variable") return `variable:${name}`;
+  if (type === "custom_field") return name;
+  return type;
+}
+
 const operatorOptions = [
   { value: "equals", label: "equals" },
   { value: "not_equals", label: "not equals" },
@@ -47,7 +81,7 @@ export function ConditionPanel({ data: rawData, onChange }: ConditionPanelProps)
   const addCondition = useCallback(() => {
     onChange({
       ...data,
-      conditions: [...conditions, { field: "tag", operator: "equals", value: "" }],
+      conditions: [...conditions, { field: "tag:", operator: "equals", value: "" }],
     });
   }, [data, conditions, onChange]);
 
@@ -127,19 +161,46 @@ export function ConditionPanel({ data: rawData, onChange }: ConditionPanelProps)
 
               {/* Field */}
               <div className="space-y-2">
-                <select
-                  value={condition.field}
-                  onChange={(e) =>
-                    updateCondition(index, { ...condition, field: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                >
-                  {fieldOptions.map((f) => (
-                    <option key={f.value} value={f.value}>
-                      {f.label}
-                    </option>
-                  ))}
-                </select>
+                {(() => {
+                  const { type: fieldType, name: fieldName } = splitField(
+                    condition.field
+                  );
+                  return (
+                    <>
+                      <select
+                        value={fieldType}
+                        onChange={(e) =>
+                          updateCondition(index, {
+                            ...condition,
+                            field: joinField(e.target.value, fieldName),
+                          })
+                        }
+                        className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      >
+                        {fieldOptions.map((f) => (
+                          <option key={f.value} value={f.value}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      {namePlaceholders[fieldType] && (
+                        <input
+                          type="text"
+                          value={fieldName}
+                          onChange={(e) =>
+                            updateCondition(index, {
+                              ...condition,
+                              field: joinField(fieldType, e.target.value),
+                            })
+                          }
+                          placeholder={namePlaceholders[fieldType]}
+                          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        />
+                      )}
+                    </>
+                  );
+                })()}
 
                 {/* Operator */}
                 <select
