@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
 import { EnrollSequencePanel } from "./EnrollSequencePanel";
 import { ActiveCampaignPanel } from "./ActiveCampaignPanel";
+import { GoToFlowPanel } from "./GoToFlowPanel";
 
 interface ActionPanelData {
   actionType?: NodeType;
@@ -19,7 +20,6 @@ interface ActionPanelData {
   body?: string;
   responseVariable?: string;
   flowId?: string;
-  returnAfter?: boolean;
   message?: string;
   paths?: Array<{ name: string; weight: number }>;
   timeout?: number;
@@ -52,7 +52,7 @@ export function ActionPanel({ data: rawData, onChange }: ActionPanelProps) {
     case "httpRequest":
       return <HttpRequestConfig data={data} onChange={onChange} />;
     case "goToFlow":
-      return <GoToFlowConfig data={data} onChange={onChange} />;
+      return <GoToFlowPanel data={rawData} onChange={onChange} />;
     case "subscribe":
     case "unsubscribe":
       return <SubscribeConfig data={data} onChange={onChange} />;
@@ -357,47 +357,6 @@ function HttpRequestConfig({ data, onChange }: ActionSubPanelProps) {
         <p className="mt-1.5 text-xs text-muted-foreground">
           Optional. Store the response body in a variable for later use.
         </p>
-      </div>
-    </div>
-  );
-}
-
-/* ───────── Go To Flow Config ───────── */
-function GoToFlowConfig({ data, onChange }: ActionSubPanelProps) {
-  return (
-    <div className="space-y-4">
-      <div>
-        <label className="mb-2 block text-xs font-semibold text-foreground">
-          Target Flow ID
-        </label>
-        <input
-          type="text"
-          value={data.flowId || ""}
-          onChange={(e) => onChange({ ...data, flowId: e.target.value })}
-          placeholder="Enter flow ID..."
-          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-        />
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          The contact will be redirected to this flow.
-        </p>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <label className="relative inline-flex cursor-pointer items-center">
-          <input
-            type="checkbox"
-            checked={data.returnAfter || false}
-            onChange={(e) => onChange({ ...data, returnAfter: e.target.checked })}
-            className="peer sr-only"
-          />
-          <div className="peer h-5 w-9 rounded-full bg-muted after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-card after:transition-all peer-checked:bg-muted0 peer-checked:after:translate-x-full peer-focus:ring-2 peer-focus:ring-ring" />
-        </label>
-        <div>
-          <p className="text-sm font-medium text-foreground">Return after</p>
-          <p className="text-xs text-muted-foreground">
-            Come back to this flow after the target flow completes
-          </p>
-        </div>
       </div>
     </div>
   );

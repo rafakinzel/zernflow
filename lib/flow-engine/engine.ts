@@ -1078,19 +1078,49 @@ async function executeActiveCampaign(
   }
 }
 
+/**
+ * Hands the contact over to another flow, carrying their variables along.
+ *
+ * The handover is one-way. There is no session stack to come back to, so the
+ * current run is closed as completed rather than left hanging: a session that
+ * stays "active" forever is never resumed and only muddies the analytics.
+ *
+ * The target is entered from its own trigger's first node, with a truthy
+ * triggerId so executeFlow treats this as a fresh start. Without that it
+ * would look for a parked session and resume it, which would drop the
+ * contact back into whatever they abandoned instead of the flow chosen here.
+ */
 async function executeGoToFlow(
   supabase: SupabaseClient<Database>,
   data: GoToFlowNodeData,
   context: FlowExecutionContext,
-  _sessionId: string
+  sessionId: string
 ) {
-  // Execute the target flow
+  if (!data.flowId) {
+    console.error("[goToFlow] no target flow chosen on this node.");
+    return "pause";
+  }
+
+  if (data.flowId === context.flowId) {
+    console.error("[goToFlow] target is the flow itself; refusing to loop.");
+    return "pause";
+  }
+
+  await supabase
+    .from("flow_sessions")
+    .update({
+      status: "completed",
+      waiting_for_input: false,
+      waiting_until: null,
+    })
+    .eq("id", sessionId);
+
   await executeFlow(supabase, {
     ...context,
     flowId: data.flowId,
+    triggerId: context.triggerId || `goto:${context.flowId}`,
   });
-  // If returnAfter is true, the current flow will continue after the target flow completes
-  // For now, we just stop the current traversal
+
   return "pause";
 }
 

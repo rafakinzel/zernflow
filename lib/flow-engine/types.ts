@@ -123,9 +123,14 @@ export interface HttpRequestNodeData {
   responseVariable?: string;
 }
 
+/**
+ * Hands the contact over to another flow. The handover is one-way: there is
+ * no return. The `flow_stack` column exists for a future version that pushes
+ * the caller and comes back, which is why `returnAfter` is not offered here
+ * rather than offered and ignored.
+ */
 export interface GoToFlowNodeData {
   flowId: string;
-  returnAfter: boolean;
 }
 
 export interface HumanTakeoverNodeData {
