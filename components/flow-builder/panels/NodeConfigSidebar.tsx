@@ -225,7 +225,7 @@ export function NodeConfigSidebar({ node, nodes, edges, onChange, onClose, onDel
             type="button"
             onClick={() => onDuplicate(node.id)}
             className="rounded-lg p-1.5 text-muted-foreground/60 hover:bg-muted hover:text-foreground disabled:opacity-40"
-            title="Duplicar este nó com a configuração (Ctrl+D)"
+            title="Duplicate this node with its configuration (Ctrl+D)"
             disabled={nodeType === "trigger"}
           >
             <Copy className="h-4 w-4" />

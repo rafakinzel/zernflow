@@ -148,14 +148,14 @@ function getSummary(nodeData: ActionNodeProps): string | null {
       if (!nodeData.email) return null;
       const extras = [
         nodeData.fieldValues?.length
-          ? `${nodeData.fieldValues.length} campo(s)`
+          ? `${nodeData.fieldValues.length} field(s)`
           : null,
         nodeData.tagIds?.length ? `${nodeData.tagIds.length} tag(s)` : null,
       ].filter(Boolean);
       const suffix = extras.length ? `, ${extras.join(", ")}` : "";
       return nodeData.listId
-        ? `${nodeData.email} → lista ${nodeData.listId}${suffix}`
-        : `${nodeData.email}, sem lista${suffix}`;
+        ? `${nodeData.email} → list ${nodeData.listId}${suffix}`
+        : `${nodeData.email}, no list${suffix}`;
     }
     case "commentReply":
     case "privateReply":

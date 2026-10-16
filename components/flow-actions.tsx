@@ -72,7 +72,7 @@ export function ExportFlowButton({
  *
  * Opening it is the point: the copy exists to be edited (event name, group
  * link, ActiveCampaign list and tag), so landing on the list and hunting for
- * "(cópia)" would just add a step.
+ * "(copy)" would just add a step.
  */
 export function DuplicateFlowButton({
   flow,
@@ -91,13 +91,13 @@ export function DuplicateFlowButton({
       const body = await res.json();
 
       if (!res.ok || !body?.id) {
-        alert(body?.error ?? "Não consegui duplicar o fluxo.");
+        alert(body?.error ?? "Could not duplicate the flow.");
         return;
       }
 
       router.push(`/dashboard/flows/${body.id}`);
     } catch {
-      alert("Não consegui duplicar o fluxo.");
+      alert("Could not duplicate the flow.");
     } finally {
       setDuplicating(false);
     }
@@ -114,7 +114,7 @@ export function DuplicateFlowButton({
       <button
         onClick={handleDuplicate}
         disabled={duplicating}
-        title="Duplicar fluxo"
+        title="Duplicate flow"
         className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
       >
         {duplicating ? (

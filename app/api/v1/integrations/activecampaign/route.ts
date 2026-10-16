@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
   if (!baseUrl || !apiKey) {
     return NextResponse.json(
-      { error: "Informe a URL da conta e a chave da API." },
+      { error: "Enter the account URL and the API key." },
       { status: 400 }
     );
   }
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     const message =
       err instanceof ActiveCampaignError
         ? err.message
-        : "Não consegui falar com o ActiveCampaign.";
+        : "Could not reach ActiveCampaign.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     return NextResponse.json(
-      { error: `Credenciais válidas, mas não consegui salvar: ${error.message}` },
+      { error: `Credentials are valid but could not be saved: ${error.message}` },
       { status: 500 }
     );
   }

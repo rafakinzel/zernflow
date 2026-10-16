@@ -55,7 +55,7 @@ export async function POST(
     .from("flows")
     .insert({
       workspace_id: source.workspace_id,
-      name: `${source.name} (cópia)`,
+      name: `${source.name} (copy)`,
       description: source.description,
       nodes: source.nodes,
       edges: source.edges,

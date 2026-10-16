@@ -131,7 +131,7 @@ export async function listLists(
   );
   return (data.lists ?? [])
     .filter((l) => l.id)
-    .map((l) => ({ id: String(l.id), name: l.name ?? `Lista ${l.id}` }));
+    .map((l) => ({ id: String(l.id), name: l.name ?? `List ${l.id}` }));
 }
 
 export async function listFields(
@@ -144,7 +144,7 @@ export async function listFields(
     .filter((f) => f.id)
     .map((f) => ({
       id: String(f.id),
-      title: f.title ?? `Campo ${f.id}`,
+      title: f.title ?? `Field ${f.id}`,
       type: f.type ?? "text",
     }));
 }

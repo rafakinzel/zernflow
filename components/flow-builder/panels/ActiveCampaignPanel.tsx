@@ -89,14 +89,14 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
       const res = await fetch("/api/v1/integrations/activecampaign/metadata");
       const body = await res.json();
       if (!res.ok) {
-        setError(body?.error ?? "Não consegui carregar sua conta.");
+        setError(body?.error ?? "Could not load your account.");
         return;
       }
       setLists(body.lists ?? []);
       setFields(body.fields ?? []);
       setTags(body.tags ?? []);
     } catch {
-      setError("Não consegui falar com o servidor.");
+      setError("Could not reach the server.");
     } finally {
       setLoading(false);
     }
@@ -137,7 +137,7 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
               onClick={load}
               className="mt-1 font-medium text-emerald-500 hover:underline"
             >
-              Tentar de novo
+              Try again
             </button>
           </div>
         </div>
@@ -145,12 +145,12 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
 
       <div>
         <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-foreground">Lista</label>
+          <label className="text-xs font-medium text-foreground">List</label>
           <button
             type="button"
             onClick={load}
             disabled={loading}
-            title="Recarregar listas e campos"
+            title="Reload lists and fields"
             className="rounded p-1 text-muted-foreground/70 hover:bg-muted hover:text-muted-foreground disabled:opacity-40"
           >
             <RefreshCw className={loading ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
@@ -161,7 +161,7 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
           onChange={(e) => update({ listId: e.target.value })}
           className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
         >
-          <option value="">Só criar o contato, sem lista</option>
+          <option value="">Create the contact only, no list</option>
           {lists.map((l) => (
             <option key={l.id} value={l.id}>
               {l.name}
@@ -171,7 +171,7 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
       </div>
 
       <div>
-        <label className="text-xs font-medium text-foreground">E-mail</label>
+        <label className="text-xs font-medium text-foreground">Email</label>
         <input
           type="text"
           value={data.email ?? ""}
@@ -180,14 +180,14 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
           className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm"
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          Obrigatório. É por ele que o ActiveCampaign reconhece quem já existe,
-          então rodar o fluxo duas vezes atualiza em vez de duplicar.
+          Required. ActiveCampaign identifies people by it, so running the flow
+          twice updates instead of duplicating.
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-xs font-medium text-foreground">Nome</label>
+          <label className="text-xs font-medium text-foreground">First name</label>
           <input
             type="text"
             value={data.firstName ?? ""}
@@ -198,13 +198,13 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
         </div>
         <div>
           <label className="text-xs font-medium text-foreground">
-            Sobrenome
+            Last name
           </label>
           <input
             type="text"
             value={data.lastName ?? ""}
             onChange={(e) => update({ lastName: e.target.value })}
-            placeholder="opcional"
+            placeholder="optional"
             className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm"
           />
         </div>
@@ -227,7 +227,7 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
                     update({ tagIds: tagIds.filter((id) => id !== tag.id) })
                   }
                   className="rounded-full p-0.5 hover:bg-emerald-500/20"
-                  aria-label={`Remover ${tag.name}`}
+                  aria-label={`Remove ${tag.name}`}
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -242,7 +242,7 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
             onClick={() => setTagsOpen(true)}
             className="mt-2 w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-emerald-400 hover:text-emerald-500"
           >
-            {selectedTags.length > 0 ? "Mudar tags" : "Escolher tags"}
+            {selectedTags.length > 0 ? "Change tags" : "Choose tags"}
           </button>
         ) : (
           <div className="mt-2 rounded-lg border border-border bg-card p-2">
@@ -253,7 +253,7 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
                   type="text"
                   value={tagQuery}
                   onChange={(e) => setTagQuery(e.target.value)}
-                  placeholder="Buscar tag pelo nome"
+                  placeholder="Search tags by name"
                   autoFocus
                   className="w-full rounded-lg border border-border bg-background py-1.5 pl-7 pr-2 text-xs"
                 />
@@ -266,7 +266,7 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
                 }}
                 className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
               >
-                Pronto
+                Done
               </button>
             </div>
 
@@ -274,10 +274,10 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
               {visibleTags.length === 0 ? (
                 <p className="px-1 py-3 text-center text-xs text-muted-foreground">
                   {loading
-                    ? "Carregando suas tags."
+                    ? "Loading your tags."
                     : tags.length === 0
-                      ? "Nenhuma tag encontrada na sua conta."
-                      : "Nenhuma tag com esse nome."}
+                      ? "No tags found in your account."
+                      : "No tag with that name."}
                 </p>
               ) : (
                 visibleTags.map((tag) => {
@@ -315,7 +315,7 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
 
             {tags.length > 0 && (
               <p className="mt-1 px-1 text-[11px] text-muted-foreground">
-                {visibleTags.length} de {tags.length} tags
+                {visibleTags.length} of {tags.length} tags
               </p>
             )}
           </div>
@@ -324,10 +324,10 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
 
       <div>
         <label className="text-xs font-medium text-foreground">
-          Campos personalizados
+          Custom fields
         </label>
         <p className="mt-1 text-xs text-muted-foreground">
-          É aqui que entram os UTMs. Os campos vêm da sua conta.
+          This is where UTMs go. The fields come from your account.
         </p>
 
         <div className="mt-2 space-y-2">
@@ -338,7 +338,7 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
                 onChange={(e) => setFieldValue(index, { field: e.target.value })}
                 className="w-1/2 rounded-lg border border-border bg-background px-2 py-1.5 text-xs"
               >
-                <option value="">Escolha o campo</option>
+                <option value="">Choose a field</option>
                 {fields.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.title}
@@ -360,7 +360,7 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
                   })
                 }
                 className="rounded p-1 text-muted-foreground/70 hover:bg-muted hover:text-muted-foreground"
-                aria-label="Remover campo"
+                aria-label="Remove field"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -386,13 +386,13 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
           ) : (
             <Plus className="h-3 w-3" />
           )}
-          Adicionar campo
+          Add field
         </button>
       </div>
 
       <div>
         <label className="text-xs font-medium text-foreground">
-          Guardar o id do contato em
+          Store the contact id in
         </label>
         <input
           type="text"
@@ -402,7 +402,7 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
           className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm"
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          Opcional. Útil se um nó depois precisar falar do mesmo contato.
+          Optional. Useful when a later node needs to reference the same contact.
         </p>
       </div>
     </div>

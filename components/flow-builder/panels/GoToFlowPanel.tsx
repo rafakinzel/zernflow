@@ -38,12 +38,12 @@ export function GoToFlowPanel({ data, onChange }: Props) {
       const res = await fetch("/api/v1/flows");
       const body = await res.json();
       if (!res.ok) {
-        setError(body?.error ?? "Não consegui carregar seus fluxos.");
+        setError(body?.error ?? "Could not load your flows.");
         return;
       }
       setFlows(Array.isArray(body) ? body : []);
     } catch {
-      setError("Não consegui falar com o servidor.");
+      setError("Could not reach the server.");
     } finally {
       setLoading(false);
     }
@@ -62,13 +62,13 @@ export function GoToFlowPanel({ data, onChange }: Props) {
       <div>
         <div className="flex items-center justify-between">
           <label className="text-xs font-semibold text-foreground">
-            Levar para o fluxo
+            Go to flow
           </label>
           <button
             type="button"
             onClick={load}
             disabled={loading}
-            title="Recarregar"
+            title="Reload"
             className="rounded p-1 text-muted-foreground/70 hover:bg-muted hover:text-muted-foreground disabled:opacity-40"
           >
             <RefreshCw className={loading ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
@@ -80,18 +80,18 @@ export function GoToFlowPanel({ data, onChange }: Props) {
           onChange={(e) => onChange({ ...data, flowId: e.target.value })}
           className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
         >
-          <option value="">Escolha um fluxo</option>
+          <option value="">Choose a flow</option>
           {options.map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
-              {f.status === "published" ? "" : " (rascunho)"}
+              {f.status === "published" ? "" : " (draft)"}
             </option>
           ))}
         </select>
 
         <p className="mt-1.5 text-xs text-muted-foreground">
-          A pessoa entra nesse fluxo pelo começo dele, levando junto o que já
-          foi capturado aqui, como nome e e-mail.
+          The contact enters that flow from its start, carrying what was already
+          captured here, such as name and email.
         </p>
       </div>
 
@@ -99,8 +99,8 @@ export function GoToFlowPanel({ data, onChange }: Props) {
         <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
           <p className="text-xs text-foreground">
-            Esse fluxo está em rascunho. Enquanto estiver assim, quem chegar
-            aqui não recebe nada. Publique ele antes de usar este nó.
+            That flow is a draft. While it stays one, anyone reaching this node
+            gets nothing. Publish it before using this node.
           </p>
         </div>
       )}
@@ -115,7 +115,7 @@ export function GoToFlowPanel({ data, onChange }: Props) {
               onClick={load}
               className="mt-1 font-medium text-emerald-500 hover:underline"
             >
-              Tentar de novo
+              Try again
             </button>
           </div>
         </div>
@@ -124,13 +124,13 @@ export function GoToFlowPanel({ data, onChange }: Props) {
       {loading && flows.length === 0 && (
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Loader2 className="h-3 w-3 animate-spin" />
-          Carregando seus fluxos.
+          Loading your flows.
         </p>
       )}
 
       <p className="rounded-lg border border-border bg-muted p-3 text-xs text-muted-foreground">
-        Este nó encerra o fluxo atual. O que vier depois dele no desenho não é
-        executado, então deixe-o como último passo do caminho.
+        This node ends the current flow. Anything wired after it never runs, so
+        keep it as the last step on its path.
       </p>
     </div>
   );

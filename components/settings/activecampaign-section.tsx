@@ -60,7 +60,7 @@ export function ActiveCampaignSection() {
       });
       const body = await res.json();
       if (!res.ok) {
-        setError(body?.error ?? "Não consegui conectar.");
+        setError(body?.error ?? "Could not connect.");
         return;
       }
       setStatus(body);
@@ -68,7 +68,7 @@ export function ActiveCampaignSection() {
       setApiKey("");
       setSaved(true);
     } catch {
-      setError("Não consegui falar com o servidor.");
+      setError("Could not reach the server.");
     } finally {
       setBusy(false);
     }
@@ -95,14 +95,14 @@ export function ActiveCampaignSection() {
         <h2 className="text-sm font-semibold">ActiveCampaign</h2>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        Conecte uma vez aqui e os fluxos passam a oferecer suas listas e campos
-        num menu, sem chave de API em cada nó.
+        Connect once here and your flows offer your lists and fields in a menu,
+        with no API key inside each node.
       </p>
 
       <div className="mt-4 space-y-3">
         <div>
           <label className="text-xs font-medium text-foreground">
-            URL da conta
+            Account URL
           </label>
           <input
             type="text"
@@ -112,13 +112,13 @@ export function ActiveCampaignSection() {
             className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
           />
           <p className="mt-1 text-xs text-muted-foreground">
-            Em Settings, Developer, no ActiveCampaign. Pode colar a URL inteira.
+            Under Settings, Developer in ActiveCampaign. Paste the whole URL.
           </p>
         </div>
 
         <div>
           <label className="text-xs font-medium text-foreground">
-            Chave da API
+            API key
           </label>
           <div className="mt-1 flex gap-2">
             <div className="relative flex-1">
@@ -127,7 +127,7 @@ export function ActiveCampaignSection() {
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={
-                  status?.connected ? "Chave salva. Cole uma nova para trocar." : "Api-Token"
+                  status?.connected ? "Key saved. Paste a new one to replace it." : "Api-Token"
                 }
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 pr-9 text-sm"
               />
@@ -135,7 +135,7 @@ export function ActiveCampaignSection() {
                 type="button"
                 onClick={() => setShowKey((v) => !v)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/70 hover:text-muted-foreground"
-                aria-label={showKey ? "Esconder a chave" : "Mostrar a chave"}
+                aria-label={showKey ? "Hide the key" : "Show the key"}
               >
                 {showKey ? (
                   <EyeOff className="h-4 w-4" />
@@ -155,7 +155,7 @@ export function ActiveCampaignSection() {
               ) : (
                 <Plug className="h-3.5 w-3.5" />
               )}
-              {status?.connected ? "Reconectar" : "Conectar"}
+              {status?.connected ? "Reconnect" : "Connect"}
             </button>
           </div>
         </div>
@@ -170,7 +170,7 @@ export function ActiveCampaignSection() {
       {saved && !error && (
         <p className="mt-3 flex items-center gap-1.5 text-xs text-emerald-500">
           <Check className="h-3 w-3" />
-          Conectado. A chave foi testada antes de ser salva.
+          Connected. The key was tested before being saved.
         </p>
       )}
 
@@ -178,7 +178,7 @@ export function ActiveCampaignSection() {
         <div className="mt-3 flex items-center justify-between">
           <p className="flex items-center gap-1.5 text-xs text-emerald-500">
             <Check className="h-3 w-3" />
-            Conectado a {status.url}
+            Connected to {status.url}
           </p>
           <button
             type="button"
@@ -186,7 +186,7 @@ export function ActiveCampaignSection() {
             disabled={busy}
             className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-40"
           >
-            Desconectar
+            Disconnect
           </button>
         </div>
       )}
@@ -195,9 +195,9 @@ export function ActiveCampaignSection() {
         <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-foreground">
           <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
           <span>
-            A variável ENCRYPTION_KEY não está configurada neste deploy, então
-            as chaves ficam salvas em texto puro no banco. Funciona, mas quem
-            tiver acesso ao banco consegue lê-las.
+            ENCRYPTION_KEY is not set on this deployment, so keys are stored in
+            plain text. It works, but anyone with database access can read
+            them.
           </span>
         </p>
       )}

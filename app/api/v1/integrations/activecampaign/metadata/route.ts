@@ -41,7 +41,7 @@ export async function GET() {
 
   if (!credentials) {
     return NextResponse.json(
-      { error: "Conecte o ActiveCampaign em Configurações primeiro." },
+      { error: "Connect ActiveCampaign in Settings first." },
       { status: 400 }
     );
   }
@@ -58,7 +58,7 @@ export async function GET() {
     const message =
       err instanceof ActiveCampaignError
         ? err.message
-        : "Não consegui carregar listas e campos do ActiveCampaign.";
+        : "Could not load lists and fields from ActiveCampaign.";
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

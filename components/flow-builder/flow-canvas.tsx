@@ -414,16 +414,15 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
         <div className="flex flex-wrap items-center gap-3 border-b border-amber-500/40 bg-amber-500/10 px-4 py-2.5">
           <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
           <p className="flex-1 text-sm text-foreground">
-            Esse fluxo mudou depois que você abriu esta aba, então não salvei
-            para não apagar a alteração mais nova. Recarregue para pegar a
-            versão atual.
+            This flow changed after you opened this tab, so nothing was saved and
+            the newer version is intact. Reload to pick it up.
           </p>
           <button
             type="button"
             onClick={() => window.location.reload()}
             className="rounded-lg bg-foreground px-3 py-1.5 text-xs font-medium text-background"
           >
-            Recarregar
+            Reload
           </button>
         </div>
       )}
@@ -458,9 +457,9 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
             )}
           >
             {flowStatus === "published"
-              ? "no ar"
+              ? "live"
               : flowStatus === "draft"
-                ? "pausado"
+                ? "paused"
                 : flowStatus}
           </span>
         </div>
@@ -551,7 +550,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
             <button
               onClick={handlePause}
               disabled={pausing || publishing}
-              title="Para de receber novos leads. Quem já está no meio da conversa termina."
+              title="Stops new people entering. Anyone mid-conversation still finishes."
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
             >
               {pausing ? (
@@ -559,7 +558,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
               ) : (
                 <Pause className="h-3.5 w-3.5" />
               )}
-              Pausar
+              Pause
             </button>
           )}
           <button
