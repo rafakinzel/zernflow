@@ -19,8 +19,14 @@ interface FieldValue {
   value: string;
 }
 
+interface ACTag {
+  id: string;
+  name: string;
+}
+
 interface PanelData {
   listId?: string;
+  tagIds?: string[];
   email?: string;
   firstName?: string;
   lastName?: string;
@@ -48,8 +54,11 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
   // every render and invalidate the callbacks that depend on it.
   const fieldValues = useMemo(() => data.fieldValues ?? [], [data.fieldValues]);
 
+  const tagIds = useMemo(() => data.tagIds ?? [], [data.tagIds]);
+
   const [lists, setLists] = useState<ACList[]>([]);
   const [fields, setFields] = useState<ACField[]>([]);
+  const [tags, setTags] = useState<ACTag[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +74,7 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
       }
       setLists(body.lists ?? []);
       setFields(body.fields ?? []);
+      setTags(body.tags ?? []);
     } catch {
       setError("Não consegui falar com o servidor.");
     } finally {
@@ -178,6 +188,47 @@ export function ActiveCampaignPanel({ data: rawData, onChange }: Props) {
             className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm"
           />
         </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-medium text-foreground">Tags</label>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Tags que já existem na sua conta. Clique para marcar.
+        </p>
+
+        {tags.length === 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {loading
+              ? "Carregando suas tags."
+              : "Nenhuma tag encontrada na sua conta."}
+          </p>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {tags.map((tag) => {
+              const on = tagIds.includes(tag.id);
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  onClick={() =>
+                    update({
+                      tagIds: on
+                        ? tagIds.filter((id) => id !== tag.id)
+                        : [...tagIds, tag.id],
+                    })
+                  }
+                  className={
+                    on
+                      ? "rounded-full border border-emerald-500 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-500"
+                      : "rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:border-emerald-400 hover:text-emerald-500"
+                  }
+                >
+                  {tag.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div>

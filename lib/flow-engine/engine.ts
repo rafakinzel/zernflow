@@ -21,6 +21,7 @@ import type {
 } from "./types";
 import {
   addContactToList,
+  addTagToContact,
   getWorkspaceCredentials,
   syncContact,
 } from "@/lib/activecampaign";
@@ -1044,9 +1045,10 @@ async function executeActiveCampaign(
       context.variables = { ...vars, [data.responseVariable]: contactId };
     }
 
+    // Each follow-up gets its own try: the contact is already saved, and
+    // losing that because a subscribe or a tag failed would be the worse
+    // outcome. A failed tag must also not stop the remaining tags.
     if (data.listId) {
-      // Separate try: the contact is already saved, and losing that because
-      // the subscribe failed would be the worse outcome of the two.
       try {
         await addContactToList(credentials, {
           contactId,
@@ -1055,6 +1057,18 @@ async function executeActiveCampaign(
       } catch (error) {
         console.error(
           `[activeCampaign] contact ${contactId} saved but not added to list ${data.listId}:`,
+          error
+        );
+      }
+    }
+
+    for (const tagId of data.tagIds ?? []) {
+      if (!tagId) continue;
+      try {
+        await addTagToContact(credentials, { contactId, tagId });
+      } catch (error) {
+        console.error(
+          `[activeCampaign] contact ${contactId} saved but tag ${tagId} was not applied:`,
           error
         );
       }

@@ -32,6 +32,11 @@ export interface ACField {
   type: string;
 }
 
+export interface ACTag {
+  id: string;
+  name: string;
+}
+
 export interface ACContactFieldValue {
   field: string;
   value: string;
@@ -180,6 +185,41 @@ export async function syncContact(
     );
   }
   return String(id);
+}
+
+/**
+ * Lists the account's contact tags.
+ *
+ * `tagType` is filtered to "contact": the same endpoint also returns template
+ * tags, which cannot be applied to a person and would only clutter the menu.
+ */
+export async function listTags(
+  credentials: ActiveCampaignCredentials
+): Promise<ACTag[]> {
+  const data = await request<{
+    tags?: Array<{ id?: string; tag?: string; tagType?: string }>;
+  }>(credentials, "tags?limit=100");
+  return (data.tags ?? [])
+    .filter((t) => t.id && (t.tagType ?? "contact") === "contact")
+    .map((t) => ({ id: String(t.id), name: t.tag ?? `Tag ${t.id}` }));
+}
+
+/**
+ * Applies an existing tag to a contact.
+ *
+ * The API takes the tag id, not its name: a name here fails with "No tag id
+ * provided", which is why the node stores ids and the panel shows names.
+ */
+export async function addTagToContact(
+  credentials: ActiveCampaignCredentials,
+  params: { contactId: string; tagId: string }
+): Promise<void> {
+  await request(credentials, "contactTags", {
+    method: "POST",
+    body: {
+      contactTag: { contact: params.contactId, tag: params.tagId },
+    },
+  });
 }
 
 /** Subscribes a contact to a list. status 1 is subscribed, 2 unsubscribed. */

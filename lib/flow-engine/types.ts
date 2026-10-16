@@ -109,6 +109,8 @@ export interface ActiveCampaignNodeData {
   phone?: string;
   /** Custom fields, keyed by the numeric ActiveCampaign field id. */
   fieldValues?: Array<{ field: string; value: string }>;
+  /** Existing ActiveCampaign tags to apply, by tag id. */
+  tagIds?: string[];
   /** Variable to receive the ActiveCampaign contact id, when set. */
   responseVariable?: string;
 }

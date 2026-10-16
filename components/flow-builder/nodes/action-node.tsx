@@ -36,6 +36,7 @@ export interface ActionNodeProps {
   email?: string;
   listId?: string;
   fieldValues?: Array<{ field: string; value: string }>;
+  tagIds?: string[];
 }
 
 const actionConfig: Record<
@@ -145,12 +146,16 @@ function getSummary(nodeData: ActionNodeProps): string | null {
         : null;
     case "activeCampaign": {
       if (!nodeData.email) return null;
-      const extras = nodeData.fieldValues?.length
-        ? `, ${nodeData.fieldValues.length} campo(s)`
-        : "";
+      const extras = [
+        nodeData.fieldValues?.length
+          ? `${nodeData.fieldValues.length} campo(s)`
+          : null,
+        nodeData.tagIds?.length ? `${nodeData.tagIds.length} tag(s)` : null,
+      ].filter(Boolean);
+      const suffix = extras.length ? `, ${extras.join(", ")}` : "";
       return nodeData.listId
-        ? `${nodeData.email} → lista ${nodeData.listId}${extras}`
-        : `${nodeData.email}, sem lista${extras}`;
+        ? `${nodeData.email} → lista ${nodeData.listId}${suffix}`
+        : `${nodeData.email}, sem lista${suffix}`;
     }
     case "commentReply":
     case "privateReply":

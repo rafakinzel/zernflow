@@ -5,6 +5,7 @@ import {
   getWorkspaceCredentials,
   listFields,
   listLists,
+  listTags,
 } from "@/lib/activecampaign";
 
 /**
@@ -46,12 +47,13 @@ export async function GET() {
   }
 
   try {
-    // Both calls are independent, so pay for one round trip, not two.
-    const [lists, fields] = await Promise.all([
+    // The three calls are independent, so pay for one round trip, not three.
+    const [lists, fields, tags] = await Promise.all([
       listLists(credentials),
       listFields(credentials),
+      listTags(credentials),
     ]);
-    return NextResponse.json({ lists, fields });
+    return NextResponse.json({ lists, fields, tags });
   } catch (err) {
     const message =
       err instanceof ActiveCampaignError

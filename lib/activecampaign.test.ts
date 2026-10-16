@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ActiveCampaignError,
   addContactToList,
+  addTagToContact,
   listFields,
   listLists,
+  listTags,
   normalizeBaseUrl,
   syncContact,
 } from "./activecampaign";
@@ -131,5 +133,34 @@ describe("listing", () => {
     await expect(listFields(credentials)).resolves.toEqual([
       { id: "3", title: "utm_source", type: "text" },
     ]);
+  });
+
+  it("keeps contact tags and drops template tags", async () => {
+    stubFetch({
+      tags: [
+        { id: "20", tag: "lead-bot", tagType: "contact" },
+        { id: "21", tag: "modelo", tagType: "template" },
+        { id: "22", tag: "sem tipo" },
+      ],
+    });
+    await expect(listTags(credentials)).resolves.toEqual([
+      { id: "20", name: "lead-bot" },
+      { id: "22", name: "sem tipo" },
+    ]);
+  });
+});
+
+describe("addTagToContact", () => {
+  it("posts the tag id, which is what the API requires", async () => {
+    const fetchMock = stubFetch({});
+
+    await addTagToContact(credentials, { contactId: "42", tagId: "20" });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "https://acme.api-us1.com/api/3/contactTags"
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      contactTag: { contact: "42", tag: "20" },
+    });
   });
 });
