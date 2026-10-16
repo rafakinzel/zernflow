@@ -19,11 +19,11 @@ export function SendMessageNode({ data, selected }: NodeProps) {
   const label = nodeData.label || "Send Message";
   const firstMessage = nodeData.messages?.[0];
   const messageCount = nodeData.messages?.length || 0;
-  const buttonCount =
-    nodeData.messages?.reduce(
-      (acc, m) => acc + (m.buttons?.length || 0) + (m.quickReplies?.length || 0),
-      0
-    ) || 0;
+  const replyTitles = (nodeData.messages ?? []).flatMap((m) =>
+    [...(m.buttons ?? []), ...(m.quickReplies ?? [])]
+      .map((b) => b.title?.trim())
+      .filter((t): t is string => Boolean(t))
+  );
 
   return (
     <div
@@ -42,30 +42,50 @@ export function SendMessageNode({ data, selected }: NodeProps) {
         <span className="text-xs font-semibold">Send Message</span>
       </div>
       <div className="p-3">
-        <p className="text-sm font-medium">{label}</p>
-        {firstMessage?.text && (
-          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+        {/* The header already says "Send Message", so the default label would
+            spend the card's most readable line saying it twice. On a canvas
+            with dozens of nodes the message itself is what tells them apart. */}
+        {label !== "Send Message" && (
+          <p className="mb-1 text-sm font-medium">{label}</p>
+        )}
+
+        {firstMessage?.text ? (
+          <p className="line-clamp-3 text-xs leading-snug text-muted-foreground">
             {firstMessage.text}
           </p>
+        ) : firstMessage?.imageUrl ? (
+          <p className="text-xs text-muted-foreground">Image message</p>
+        ) : (
+          <p className="text-xs italic text-muted-foreground">
+            No message configured
+          </p>
         )}
-        {!firstMessage?.text && firstMessage?.imageUrl && (
-          <p className="mt-1 text-xs text-muted-foreground">Image message</p>
+
+        {/* Button titles rather than a count: two nodes asking a yes/no
+            question look identical until you can read the answers. */}
+        {replyTitles.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {replyTitles.slice(0, 2).map((title, i) => (
+              <span
+                key={i}
+                className="max-w-full truncate rounded-full border border-blue-200 px-1.5 py-0.5 text-[10px] text-blue-700 dark:border-blue-900 dark:text-blue-300"
+              >
+                {title}
+              </span>
+            ))}
+            {replyTitles.length > 2 && (
+              <span className="rounded-full px-1 py-0.5 text-[10px] text-muted-foreground">
+                +{replyTitles.length - 2}
+              </span>
+            )}
+          </div>
         )}
-        {!firstMessage && (
-          <p className="mt-1 text-xs text-muted-foreground italic">No message configured</p>
+
+        {messageCount > 1 && (
+          <span className="mt-2 inline-block rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+            {messageCount} messages
+          </span>
         )}
-        <div className="mt-2 flex gap-2">
-          {messageCount > 1 && (
-            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
-              {messageCount} messages
-            </span>
-          )}
-          {buttonCount > 0 && (
-            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
-              {buttonCount} {buttonCount === 1 ? "button" : "buttons"}
-            </span>
-          )}
-        </div>
       </div>
       <Handle
         type="source"

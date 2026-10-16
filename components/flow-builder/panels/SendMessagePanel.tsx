@@ -4,6 +4,8 @@ import { useCallback, useRef } from "react";
 import { Plus, X, GripVertical, Image, Type, MousePointer, MessageCircle, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+import { MessagePreview } from "./MessagePreview";
+
 interface QuickReply {
   title: string;
   payload: string;
@@ -105,6 +107,13 @@ export function SendMessagePanel({ data: rawData, onChange, availableVariables }
 
   return (
     <div className="space-y-4">
+      <div>
+        <p className="mb-2 text-xs font-medium text-muted-foreground">
+          How it arrives
+        </p>
+        <MessagePreview messages={messages} />
+      </div>
+
       {messages.map((message, msgIndex) => (
         <MessageEditor
           key={msgIndex}
