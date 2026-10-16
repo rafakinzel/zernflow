@@ -23,6 +23,19 @@ import { adaptMessage } from "./platform-adapter";
 import { createMessagingProvider } from "@/lib/messaging";
 import type { MessagingProvider, OutboundMessage } from "@/lib/messaging";
 
+/**
+ * Variables that belong to the event being processed right now. A value stored
+ * on the contact must never fill one of these: a saved field named `message`
+ * would otherwise stand in for what the contact just typed on a cron resume,
+ * and every condition written against it would read the wrong turn.
+ */
+const EVENT_OWNED_VARIABLES = new Set([
+  "message",
+  "payload",
+  "post_id",
+  "comment_id",
+]);
+
 export async function executeFlow(
   supabase: SupabaseClient<Database>,
   context: FlowExecutionContext
@@ -50,26 +63,44 @@ export async function executeFlow(
     context.variables.payload = tappedPayload;
   }
 
-  // Seed the contact's profile name so a flow can greet by name before it has
-  // asked for one, the way the platforms' own tools do. {{first_name}} is the
-  // first word of the display name; a later Set Field overwrites it with
-  // whatever the contact actually typed.
+  // Seed what this contact has already told us, then fall back to the profile
+  // name. A flow that asked "what's your name?" three weeks ago must not greet
+  // the person by their @ today, so a stored field outranks the platform
+  // profile. full_name is the guard because it is always set below: when it is
+  // present the variables were restored from the session and the read is moot.
   if (!context.variables.full_name) {
     const { data: profile } = await supabase
       .from("contacts")
-      .select("display_name")
+      .select(
+        "display_name, contact_custom_fields(value, custom_field_definitions(slug))"
+      )
       .eq("id", context.contactId)
       .single();
+
+    const storedFields = (profile?.contact_custom_fields ?? []) as Array<{
+      value: string | null;
+      custom_field_definitions: { slug: string } | null;
+    }>;
+
+    for (const field of storedFields) {
+      const slug = field.custom_field_definitions?.slug;
+      if (!slug || EVENT_OWNED_VARIABLES.has(slug)) continue;
+      const value = field.value?.trim();
+      if (!value) continue;
+      if (!context.variables[slug]) context.variables[slug] = value;
+    }
 
     const displayName = profile?.display_name?.trim();
     // A contact with no name and no username falls back to the raw platform
     // id, which must never be greeted as a name ("Opa 17829384562, vamos").
     // Seed blanks instead, and interpolation tidies the leftover punctuation.
     const usable = displayName && !/^\d{5,}$/.test(displayName);
-    context.variables.full_name = usable ? displayName : "";
-    context.variables.first_name ??= usable
-      ? displayName.split(/\s+/)[0]
-      : "";
+    if (!context.variables.full_name) {
+      context.variables.full_name = usable ? displayName : "";
+    }
+    if (!context.variables.first_name) {
+      context.variables.first_name = usable ? displayName.split(/\s+/)[0] : "";
+    }
   }
 
   // A matched trigger means the contact sent the keyword, which reads as
