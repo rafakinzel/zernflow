@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TriggerType } from "@/lib/types/database";
+import { PostPicker } from "./PostPicker";
 
 interface Keyword {
   value: string;
@@ -67,6 +68,7 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
   );
 
   const postIds = data.postIds || [];
+  const [showPostIds, setShowPostIds] = useState(false);
   const setPostIds = useCallback(
     (raw: string) => {
       const ids = raw
@@ -328,18 +330,35 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
           <label className="mb-2 block text-xs font-semibold text-foreground">
             Limit to specific posts
           </label>
-          <textarea
-            value={postIds.join("\n")}
-            onChange={(e) => setPostIds(e.target.value)}
-            placeholder="17912345678901234"
-            rows={3}
-            className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+
+          <PostPicker
+            selected={postIds}
+            onChange={(ids) => onChange({ ...data, postIds: ids })}
           />
-          <p className="mt-1.5 text-xs text-muted-foreground">
+
+          <p className="mt-2 text-xs text-muted-foreground">
             {postIds.length > 0
               ? `Only comments on ${postIds.length === 1 ? "this post" : `these ${postIds.length} posts`} run this flow.`
-              : "Leave empty to run on comments from any post. One post id per line; the id of a post shows up in Growth once it receives its first comment."}
+              : "Nothing picked, so comments on any post run this flow."}
           </p>
+
+          <button
+            type="button"
+            onClick={() => setShowPostIds((v) => !v)}
+            className="mt-2 text-xs text-muted-foreground hover:text-foreground hover:underline"
+          >
+            {showPostIds ? "Hide post ids" : "Enter post ids instead"}
+          </button>
+
+          {showPostIds && (
+            <textarea
+              value={postIds.join("\n")}
+              onChange={(e) => setPostIds(e.target.value)}
+              placeholder="17912345678901234"
+              rows={3}
+              className="mt-2 w-full resize-none rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+          )}
         </div>
       )}
 
