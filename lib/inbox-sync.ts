@@ -8,7 +8,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Zernio } from "./zernio-client";
+import type { MessagingProvider, ProviderConversation } from "./messaging";
 import { messagePreview } from "@/lib/message-preview";
 
 /** Cap per channel: 4 pages x 50 conversations. */
@@ -21,17 +21,8 @@ export interface BackfillChannel {
   platform: string;
 }
 
-/** Conversation item shape returned by Zernio's listInboxConversations. */
-interface ZernioInboxConversation {
-  id?: string;
-  participantId?: string;
-  participantName?: string;
-  participantPicture?: string | null;
-  lastMessage?: string;
-  updatedTime?: string;
-  status?: "active" | "archived";
-  unreadCount?: number | null;
-}
+/** Conversation item shape the messaging provider hands back. */
+type ZernioInboxConversation = ProviderConversation;
 
 /**
  * Finds or creates the contact behind a platform sender: reuses the mapping in
@@ -118,12 +109,12 @@ export async function upsertContactForSender({
  */
 export async function backfillInboxConversations({
   supabase,
-  zernio,
+  messaging,
   workspaceId,
   channels,
 }: {
   supabase: SupabaseClient;
-  zernio: Zernio;
+  messaging: MessagingProvider;
   workspaceId: string;
   channels: BackfillChannel[];
 }): Promise<{ imported: number }> {
@@ -131,7 +122,7 @@ export async function backfillInboxConversations({
 
   for (const channel of channels) {
     try {
-      imported += await backfillChannel({ supabase, zernio, workspaceId, channel });
+      imported += await backfillChannel({ supabase, messaging, workspaceId, channel });
     } catch (err) {
       console.error(
         `[inbox-sync] backfill failed for channel ${channel.id} (${channel.platform}):`,
@@ -145,12 +136,12 @@ export async function backfillInboxConversations({
 
 async function backfillChannel({
   supabase,
-  zernio,
+  messaging,
   workspaceId,
   channel,
 }: {
   supabase: SupabaseClient;
-  zernio: Zernio;
+  messaging: MessagingProvider;
   workspaceId: string;
   channel: BackfillChannel;
 }): Promise<number> {
@@ -170,23 +161,18 @@ async function backfillChannel({
   const seenParticipants = new Set<string>();
 
   for (let page = 0; page < MAX_PAGES_PER_CHANNEL; page++) {
-    const res = await zernio.messages.listInboxConversations({
-      query: {
-        accountId: channel.late_account_id,
-        limit: PAGE_SIZE,
-        sortOrder: "desc",
-        cursor,
-      },
+    const { conversations, nextCursor } = await messaging.listConversations({
+      accountId: channel.late_account_id,
+      limit: PAGE_SIZE,
+      cursor,
     });
-
-    const conversations = (res.data?.data ?? []) as ZernioInboxConversation[];
 
     for (const conv of conversations) {
       if (!conv.id || !conv.participantId) continue;
-      // A participant can have several Zernio conversations but the local
-      // table is unique on (channel_id, contact_id). sortOrder desc means the
-      // first conversation seen per participant is the most recent one; later
-      // ones are dropped so they cannot overwrite it.
+      // A participant can have several provider conversations but the local
+      // table is unique on (channel_id, contact_id). The provider lists newest
+      // first, so the first conversation seen per participant is the most
+      // recent one; later ones are dropped so they cannot overwrite it.
       if (seenParticipants.has(conv.participantId)) continue;
       seenParticipants.add(conv.participantId);
       if (known.has(conv.id)) continue;
@@ -195,9 +181,8 @@ async function backfillChannel({
       }
     }
 
-    const pagination = res.data?.pagination;
-    if (!pagination?.hasMore || !pagination.nextCursor) break;
-    cursor = pagination.nextCursor;
+    if (!nextCursor) break;
+    cursor = nextCursor;
   }
 
   return imported;

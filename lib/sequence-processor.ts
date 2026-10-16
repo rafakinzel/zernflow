@@ -1,5 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
-import { createZernioClient } from "@/lib/zernio-client";
+import { createMessagingProvider } from "@/lib/messaging";
 import type { SequenceStep } from "@/lib/types/database";
 
 /**
@@ -153,7 +153,7 @@ async function sendSequenceMessage(
     return;
   }
 
-  const zernio = createZernioClient(workspace.late_api_key_encrypted);
+  const messaging = createMessagingProvider(workspace.late_api_key_encrypted);
 
   // Get channel's late_account_id
   const { data: channel } = await supabase
@@ -186,9 +186,10 @@ async function sendSequenceMessage(
   }
 
   try {
-    const response = await zernio.messages.sendInboxMessage({
-      path: { conversationId: conversation.late_conversation_id },
-      body: { accountId: channel.late_account_id, message: text },
+    const response = await messaging.sendMessage({
+      accountId: channel.late_account_id,
+      conversationId: conversation.late_conversation_id,
+      message: { text },
     });
 
     // Store outbound message
@@ -197,7 +198,7 @@ async function sendSequenceMessage(
       direction: "outbound",
       text,
       status: "sent",
-      platform_message_id: response.data?.data?.messageId || null,
+      platform_message_id: response.messageId,
     });
   } catch (err) {
     console.error("Failed to send sequence message:", err);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createZernioClient } from "@/lib/zernio-client";
+import { createMessagingProvider } from "@/lib/messaging";
 
 /**
  * GET /api/v1/posts
@@ -70,47 +70,17 @@ export async function GET(request: NextRequest) {
   const cursor = request.nextUrl.searchParams.get("cursor") || undefined;
 
   try {
-    const zernio = createZernioClient(workspace.late_api_key_encrypted);
-    const res = await zernio.comments.listInboxComments({
-      query: {
-        accountId: channel.late_account_id,
-        limit,
-        sortBy: "date",
-        sortOrder: "desc",
-        ...(cursor ? { cursor } : {}),
-      },
+    const messaging = createMessagingProvider(workspace.late_api_key_encrypted);
+    const { posts, nextCursor } = await messaging.listPosts({
+      accountId: channel.late_account_id,
+      limit,
+      ...(cursor ? { cursor } : {}),
     });
 
-    type PostRow = {
-      id?: string;
-      content?: string;
-      picture?: string | null;
-      permalink?: string | null;
-      createdTime?: string;
-      commentCount?: number;
-      isAd?: boolean;
-    };
-    const rows: PostRow[] = res.data?.data ?? [];
-    // Ad rows are boosted/dark posts whose id is "{adId}:{placement}", not a
-    // post id the comment matcher can ever compare against, so leave them out.
-    const posts = rows
-      .filter((row) => row?.id && !row.isAd)
-      .map((row) => ({
-        id: row.id as string,
-        caption: row.content ?? "",
-        thumbnail: row.picture ?? null,
-        permalink: row.permalink ?? null,
-        createdAt: row.createdTime ?? null,
-        commentCount: row.commentCount ?? 0,
-      }));
-
-    return NextResponse.json({
-      posts,
-      nextCursor: res.data?.pagination?.nextCursor ?? null,
-    });
+    return NextResponse.json({ posts, nextCursor });
   } catch (err) {
     const message =
-      err instanceof Error ? err.message : "Could not load posts from Zernio";
+      err instanceof Error ? err.message : "Could not load posts";
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

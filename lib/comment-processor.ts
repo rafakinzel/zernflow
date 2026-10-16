@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { executeFlow } from "@/lib/flow-engine/engine";
-import { createZernioClient } from "@/lib/zernio-client";
+import { createMessagingProvider } from "@/lib/messaging";
 
 type Channel = Database["public"]["Tables"]["channels"]["Row"];
 type Trigger = Database["public"]["Tables"]["triggers"]["Row"];
@@ -201,14 +201,14 @@ export async function processComment({
 
       if (workspace?.late_api_key_encrypted) {
         try {
-          const zernio = createZernioClient(workspace.late_api_key_encrypted);
-          await zernio.comments.replyToInboxPost({
-            path: { postId: comment.postId },
-            body: {
-              accountId: channel.late_account_id,
-              message: replyText,
-              commentId: comment.id,
-            },
+          const messaging = createMessagingProvider(
+            workspace.late_api_key_encrypted
+          );
+          await messaging.replyToComment({
+            accountId: channel.late_account_id,
+            postId: comment.postId,
+            commentId: comment.id,
+            text: replyText,
           });
           replySent = true;
         } catch (err) {

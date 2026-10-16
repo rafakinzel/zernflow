@@ -20,7 +20,8 @@ import type {
 } from "./types";
 import { executeAiResponse } from "./nodes/ai-response";
 import { adaptMessage } from "./platform-adapter";
-import { createZernioClient } from "@/lib/zernio-client";
+import { createMessagingProvider } from "@/lib/messaging";
+import type { MessagingProvider, OutboundMessage } from "@/lib/messaging";
 
 export async function executeFlow(
   supabase: SupabaseClient<Database>,
@@ -486,7 +487,7 @@ async function executeNode(
 
 async function sendFirstMessageAsPrivateReply(
   supabase: SupabaseClient<Database>,
-  zernio: ReturnType<typeof createZernioClient>,
+  messaging: MessagingProvider,
   data: SendMessageNodeData,
   context: FlowExecutionContext,
   lateAccountId: string
@@ -500,12 +501,11 @@ async function sendFirstMessageAsPrivateReply(
   );
 
   try {
-    await zernio.comments.sendPrivateReplyToComment({
-      path: {
-        postId: String(context.variables!.post_id),
-        commentId: String(context.variables!.comment_id),
-      },
-      body: { accountId: lateAccountId, message: text },
+    await messaging.sendPrivateReply({
+      accountId: lateAccountId,
+      postId: String(context.variables!.post_id),
+      commentId: String(context.variables!.comment_id),
+      text,
     });
 
     await supabase.from("messages").insert({
@@ -555,7 +555,7 @@ async function executeSendMessage(
 
   if (!workspace?.late_api_key_encrypted) return;
 
-  const zernio = createZernioClient(workspace.late_api_key_encrypted);
+  const messaging = createMessagingProvider(workspace.late_api_key_encrypted);
 
   // Resolve late_account_id from channel if not in context
   let lateAccountId = context.lateAccountId;
@@ -588,7 +588,7 @@ async function executeSendMessage(
       // the private-reply endpoint instead of silently dropping the whole node
       // (users build comment flows with plain Send Message nodes, not Private Reply).
       if (context.variables?.comment_id && context.variables?.post_id && lateAccountId) {
-        await sendFirstMessageAsPrivateReply(supabase, zernio, data, context, lateAccountId);
+        await sendFirstMessageAsPrivateReply(supabase, messaging, data, context, lateAccountId);
         return;
       }
       console.error("No late_conversation_id found for conversation:", context.conversationId);
@@ -612,35 +612,26 @@ async function executeSendMessage(
         ? [{ type: mediaType || "image", url: mediaUrl }]
         : undefined;
 
-      // Build the API body with rich messaging fields
-      const body: Record<string, unknown> = {
-        accountId: lateAccountId,
-        message: text,
+      // Describe the message once; the provider maps it to its own wire format.
+      // Media has to travel in the send itself: it used to be stored locally
+      // only, so flow media never reached the contact.
+      const outbound: OutboundMessage = {
+        text,
+        ...(mediaUrl
+          ? { attachmentUrl: mediaUrl, attachmentType: mediaType || "image" }
+          : {}),
+        ...(adapted.buttons?.length ? { buttons: adapted.buttons } : {}),
+        ...(adapted.quickReplies?.length
+          ? { quickReplies: adapted.quickReplies }
+          : {}),
+        ...(adapted.template ? { template: adapted.template } : {}),
+        ...(adapted.replyMarkup ? { replyMarkup: adapted.replyMarkup } : {}),
       };
-      // Actually send the media to the recipient. Previously the attachment was only
-      // stored locally and never included in the send body, so flow media never
-      // reached the contact.
-      if (mediaUrl) {
-        body.attachmentUrl = mediaUrl;
-        body.attachmentType = mediaType || "image";
-      }
 
-      if (adapted.buttons?.length) {
-        body.buttons = adapted.buttons;
-      }
-      if (adapted.quickReplies?.length) {
-        body.quickReplies = adapted.quickReplies;
-      }
-      if (adapted.template) {
-        body.template = adapted.template;
-      }
-      if (adapted.replyMarkup) {
-        body.replyMarkup = adapted.replyMarkup;
-      }
-
-      const response = await zernio.messages.sendInboxMessage({
-        path: { conversationId: lateConversationId },
-        body: body as Parameters<typeof zernio.messages.sendInboxMessage>[0]["body"],
+      const response = await messaging.sendMessage({
+        accountId: lateAccountId,
+        conversationId: lateConversationId,
+        message: outbound,
       });
 
       // Store outbound message
@@ -651,7 +642,7 @@ async function executeSendMessage(
         attachments: attachments || null,
         sent_by_flow_id: context.flowId,
         sent_by_node_id: null,
-        platform_message_id: response.data?.data?.messageId || null,
+        platform_message_id: response.messageId,
         status: "sent",
       });
 
@@ -1177,7 +1168,7 @@ async function executeCommentReply(
 
   if (!workspace?.late_api_key_encrypted) return;
 
-  const zernio = createZernioClient(workspace.late_api_key_encrypted);
+  const messaging = createMessagingProvider(workspace.late_api_key_encrypted);
 
   // Resolve late_account_id
   let lateAccountId = context.lateAccountId;
@@ -1204,9 +1195,11 @@ async function executeCommentReply(
   const text = interpolateVariables(data.text, context.variables || {});
 
   try {
-    await zernio.comments.replyToInboxPost({
-      path: { postId },
-      body: { accountId: lateAccountId, message: text, commentId },
+    await messaging.replyToComment({
+      accountId: lateAccountId,
+      postId,
+      commentId,
+      text,
     });
   } catch (error) {
     console.error("Failed to post comment reply:", error);
@@ -1230,7 +1223,7 @@ async function executePrivateReply(
 
   if (!workspace?.late_api_key_encrypted) return;
 
-  const zernio = createZernioClient(workspace.late_api_key_encrypted);
+  const messaging = createMessagingProvider(workspace.late_api_key_encrypted);
 
   // Resolve late_account_id
   let lateAccountId = context.lateAccountId;
@@ -1257,9 +1250,11 @@ async function executePrivateReply(
   const text = interpolateVariables(data.text, context.variables || {});
 
   try {
-    await zernio.comments.sendPrivateReplyToComment({
-      path: { postId, commentId },
-      body: { accountId: lateAccountId, message: text },
+    await messaging.sendPrivateReply({
+      accountId: lateAccountId,
+      postId,
+      commentId,
+      text,
     });
 
     await supabase.from("messages").insert({

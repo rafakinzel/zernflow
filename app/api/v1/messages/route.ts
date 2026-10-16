@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createZernioClient } from "@/lib/zernio-client";
+import { createMessagingProvider } from "@/lib/messaging";
 import { messagePreview } from "@/lib/message-preview";
 
 /**
@@ -48,39 +48,33 @@ export async function GET(request: NextRequest) {
 
   // Fetch messages from Zernio API
   try {
-    const zernio = createZernioClient(workspace.late_api_key_encrypted);
-    const res = await zernio.messages.getInboxConversationMessages({
-      path: { conversationId: conversation.late_conversation_id },
-      query: { accountId: channel.late_account_id },
+    const messaging = createMessagingProvider(workspace.late_api_key_encrypted);
+    const rows = await messaging.getConversationMessages({
+      accountId: channel.late_account_id,
+      conversationId: conversation.late_conversation_id,
     });
 
-    // The Zernio endpoint returns { success, messages: [...] } — NOT { data }.
-    const zernioMessages =
-      (res.data as { messages?: unknown[] })?.messages ??
-      (res.data as { data?: unknown[] })?.data ??
-      [];
-
-    // Map Zernio messages to the shape the inbox UI expects
-    const messages = zernioMessages.map((m: any) => ({
+    // Map provider messages to the shape the inbox UI expects
+    const messages = rows.map((m) => ({
       id: m.id,
       conversation_id: conversationId,
-      direction: m.direction === "outbound" ? "outbound" : "inbound",
-      text: m.text ?? m.message ?? null,
-      attachments: m.attachments?.length ? m.attachments : null,
+      direction: m.direction,
+      text: m.text,
+      attachments: m.attachments,
       quick_reply_payload: null,
       postback_payload: null,
       callback_data: null,
-      platform_message_id: m.platformMessageId ?? null,
+      platform_message_id: m.platformMessageId,
       sent_by_flow_id: null,
       sent_by_node_id: null,
       sent_by_user_id: null,
       status: "sent",
-      created_at: m.sentAt ?? m.createdAt ?? new Date().toISOString(),
+      created_at: m.createdAt ?? new Date().toISOString(),
     }));
 
     return NextResponse.json(messages);
   } catch (error) {
-    console.error("Failed to fetch messages from Zernio API:", error);
+    console.error("Failed to fetch messages from the messaging provider:", error);
     return NextResponse.json(
       { error: "Failed to fetch messages" },
       { status: 500 }
@@ -145,13 +139,12 @@ export async function POST(request: NextRequest) {
 
   // Send via Zernio SDK — Zernio stores the message, no local insert needed
   try {
-    const zernio = createZernioClient(workspace.late_api_key_encrypted);
-    const res = await zernio.messages.sendInboxMessage({
-      path: { conversationId: conversation.late_conversation_id },
-      body: { accountId: channel.late_account_id, message: text },
+    const messaging = createMessagingProvider(workspace.late_api_key_encrypted);
+    const { messageId } = await messaging.sendMessage({
+      accountId: channel.late_account_id,
+      conversationId: conversation.late_conversation_id,
+      message: { text },
     });
-
-    const messageId = (res.data as any)?.data?.messageId ?? null;
 
     // Update conversation's last message info (ZernFlow-specific metadata)
     await supabase

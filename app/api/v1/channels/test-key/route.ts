@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createZernioClient } from "@/lib/zernio-client";
+import { createMessagingProvider } from "@/lib/messaging";
 import {
   ensureWebhookRegistered,
   getOrCreateWorkspaceWebhookSecret,
@@ -111,7 +112,7 @@ export async function POST(request: NextRequest) {
 
       await backfillInboxConversations({
         supabase,
-        zernio: createZernioClient(apiKey.trim()),
+        messaging: createMessagingProvider(apiKey.trim()),
         workspaceId,
         channels: activeChannels ?? [],
       });

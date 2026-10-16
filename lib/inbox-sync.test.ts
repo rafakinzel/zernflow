@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Zernio } from "./zernio-client";
+import type { MessagingProvider } from "./messaging";
 import { backfillInboxConversations } from "./inbox-sync";
 
 interface CapturedRow {
@@ -108,16 +108,22 @@ interface FakePage {
   pagination?: { hasMore?: boolean; nextCursor?: string | null };
 }
 
-/** Fake Zernio client returning one prepared page per listInboxConversations call. */
+/** Fake messaging provider returning one prepared page per listConversations call. */
 function fakeZernio(pages: FakePage[]) {
   let call = 0;
   const list = vi.fn().mockImplementation(() => {
     const page = pages[Math.min(call, pages.length - 1)];
     call++;
-    return Promise.resolve({ data: page });
+    // The provider resolves `hasMore` itself and only hands back a cursor
+    // when there is genuinely another page.
+    const nextCursor =
+      page.pagination?.hasMore && page.pagination.nextCursor
+        ? page.pagination.nextCursor
+        : null;
+    return Promise.resolve({ conversations: page.data, nextCursor });
   });
   return {
-    client: { messages: { listInboxConversations: list } } as unknown as Zernio,
+    client: { listConversations: list } as unknown as MessagingProvider,
     list,
   };
 }
@@ -144,14 +150,16 @@ describe("backfillInboxConversations", () => {
 
     const res = await backfillInboxConversations({
       supabase: fake.client,
-      zernio: z.client,
+      messaging: z.client,
       workspaceId: "ws-1",
       channels: [channel],
     });
 
     expect(res.imported).toBe(2);
     expect(z.list).toHaveBeenCalledWith({
-      query: { accountId: "acc-1", limit: 50, sortOrder: "desc", cursor: undefined },
+      accountId: "acc-1",
+      limit: 50,
+      cursor: undefined,
     });
 
     const contactInserts = fake.inserts.filter((i) => i.table === "contacts");
@@ -200,7 +208,7 @@ describe("backfillInboxConversations", () => {
 
     const res = await backfillInboxConversations({
       supabase: fake.client,
-      zernio: z.client,
+      messaging: z.client,
       workspaceId: "ws-1",
       channels: [channel],
     });
@@ -227,7 +235,7 @@ describe("backfillInboxConversations", () => {
 
     const res = await backfillInboxConversations({
       supabase: fake.client,
-      zernio: z.client,
+      messaging: z.client,
       workspaceId: "ws-1",
       channels: [channel],
     });
@@ -248,7 +256,7 @@ describe("backfillInboxConversations", () => {
 
     const res = await backfillInboxConversations({
       supabase: fake.client,
-      zernio: z.client,
+      messaging: z.client,
       workspaceId: "ws-1",
       channels: [channel],
     });
@@ -267,7 +275,7 @@ describe("backfillInboxConversations", () => {
 
     const res = await backfillInboxConversations({
       supabase: fake.client,
-      zernio: z.client,
+      messaging: z.client,
       workspaceId: "ws-1",
       channels: [channel],
     });
@@ -285,7 +293,7 @@ describe("backfillInboxConversations", () => {
 
     const res = await backfillInboxConversations({
       supabase: fake.client,
-      zernio: z.client,
+      messaging: z.client,
       workspaceId: "ws-1",
       channels: [channel],
     });
@@ -309,7 +317,7 @@ describe("backfillInboxConversations", () => {
 
     const res = await backfillInboxConversations({
       supabase: fake.client,
-      zernio: z.client,
+      messaging: z.client,
       workspaceId: "ws-1",
       channels: [channel],
     });
@@ -317,7 +325,9 @@ describe("backfillInboxConversations", () => {
     expect(res.imported).toBe(2);
     expect(z.list).toHaveBeenCalledTimes(2);
     expect(z.list).toHaveBeenNthCalledWith(2, {
-      query: { accountId: "acc-1", limit: 50, sortOrder: "desc", cursor: "cur-2" },
+      accountId: "acc-1",
+      limit: 50,
+      cursor: "cur-2",
     });
   });
 
@@ -329,7 +339,7 @@ describe("backfillInboxConversations", () => {
 
     await backfillInboxConversations({
       supabase: fake.client,
-      zernio: z.client,
+      messaging: z.client,
       workspaceId: "ws-1",
       channels: [channel],
     });
@@ -348,7 +358,7 @@ describe("backfillInboxConversations", () => {
 
     const res = await backfillInboxConversations({
       supabase: fake.client,
-      zernio: z.client,
+      messaging: z.client,
       workspaceId: "ws-1",
       channels: [channel],
     });
@@ -363,13 +373,14 @@ describe("backfillInboxConversations", () => {
       .fn()
       .mockRejectedValueOnce(new Error("account disconnected"))
       .mockResolvedValueOnce({
-        data: { data: [conv("c1")], pagination: { hasMore: false } },
+        conversations: [conv("c1")],
+        nextCursor: null,
       });
-    const zernio = { messages: { listInboxConversations: list } } as unknown as Zernio;
+    const messaging = { listConversations: list } as unknown as MessagingProvider;
 
     const res = await backfillInboxConversations({
       supabase: fake.client,
-      zernio,
+      messaging,
       workspaceId: "ws-1",
       channels: [
         { id: "ch-bad", late_account_id: "acc-bad", platform: "facebook" },
