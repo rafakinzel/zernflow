@@ -15,6 +15,7 @@ interface TriggerPanelData {
   keywords?: Keyword[];
   payload?: string;
   alsoMatchInDms?: boolean;
+  commentReplies?: string[];
   [key: string]: unknown;
 }
 
@@ -44,6 +45,25 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
   const keywords = data.keywords || [];
   const [newKeyword, setNewKeyword] = useState("");
   const [newMatchType, setNewMatchType] = useState<"exact" | "contains" | "startsWith">("contains");
+  const commentReplies = data.commentReplies || [];
+  const [newReply, setNewReply] = useState("");
+
+  const addCommentReply = useCallback(() => {
+    const trimmed = newReply.trim();
+    if (!trimmed) return;
+    onChange({ ...data, commentReplies: [...commentReplies, trimmed] });
+    setNewReply("");
+  }, [data, commentReplies, newReply, onChange]);
+
+  const removeCommentReply = useCallback(
+    (index: number) => {
+      onChange({
+        ...data,
+        commentReplies: commentReplies.filter((_, i) => i !== index),
+      });
+    },
+    [data, commentReplies, onChange]
+  );
 
   const handleTriggerTypeChange = useCallback(
     (type: string) => {
@@ -226,6 +246,66 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
               </div>
             </label>
           )}
+        </div>
+      )}
+
+      {/* Public reply under the comment. Lives on the trigger because it only
+          applies to comment-triggered runs, and takes several variations
+          because Instagram throttles an identical reply posted over and over. */}
+      {triggerType === "comment_keyword" && (
+        <div>
+          <label className="mb-2 block text-xs font-semibold text-foreground">
+            Public reply to the comment
+          </label>
+
+          {commentReplies.length > 0 && (
+            <div className="mb-3 space-y-2">
+              {commentReplies.map((reply, index) => (
+                <div
+                  key={index}
+                  className="flex items-start gap-2 rounded-lg border border-border bg-card p-2"
+                >
+                  <span className="flex-1 text-sm text-foreground">{reply}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeCommentReply(index)}
+                    className="rounded p-1 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newReply}
+              onChange={(e) => setNewReply(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addCommentReply();
+                }
+              }}
+              placeholder="Te mandei no direct, corre lá!"
+              className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+            <button
+              type="button"
+              onClick={addCommentReply}
+              className="rounded-lg border border-border px-3 py-2 text-muted-foreground hover:bg-muted"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {commentReplies.length > 1
+              ? `One of the ${commentReplies.length} is picked at random each time.`
+              : "Optional. Add a few variations: Instagram throttles an account that keeps posting the identical reply. Supports variables like {{first_name}}."}
+          </p>
         </div>
       )}
 

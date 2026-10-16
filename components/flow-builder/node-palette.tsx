@@ -15,7 +15,6 @@ import {
   Hourglass,
   Sparkles,
   ListOrdered,
-  MessageCircleReply,
 } from "lucide-react";
 import type { DragEvent } from "react";
 
@@ -53,13 +52,6 @@ const categories: PaletteCategory[] = [
         nodeType: "aiResponse",
         label: "AI Response",
         icon: Sparkles,
-      },
-      {
-        type: "action",
-        nodeType: "commentReply",
-        label: "Comment Reply",
-        icon: MessageCircleReply,
-        actionType: "commentReply",
       },
     ],
   },
