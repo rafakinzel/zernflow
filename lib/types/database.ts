@@ -51,7 +51,8 @@ export type NodeType =
   | "abSplit"
   | "smartDelay"
   | "aiResponse"
-  | "enrollSequence";
+  | "enrollSequence"
+  | "activeCampaign";
 
 export type SequenceStatus = "draft" | "active" | "paused";
 export type SequenceEnrollmentStatus = "active" | "completed" | "cancelled";
@@ -75,6 +76,8 @@ export interface Database {
           late_api_key_encrypted: string | null;
           ai_api_key: string | null;
           ai_provider: string;
+          activecampaign_url: string | null;
+          activecampaign_api_key_encrypted: string | null;
           global_keywords: Json | null;
           created_at: string;
           updated_at: string;
@@ -86,6 +89,8 @@ export interface Database {
           late_api_key_encrypted?: string | null;
           ai_api_key?: string | null;
           ai_provider?: string;
+          activecampaign_url?: string | null;
+          activecampaign_api_key_encrypted?: string | null;
           global_keywords?: Json | null;
           created_at?: string;
           updated_at?: string;
@@ -97,6 +102,8 @@ export interface Database {
           late_api_key_encrypted?: string | null;
           ai_api_key?: string | null;
           ai_provider?: string;
+          activecampaign_url?: string | null;
+          activecampaign_api_key_encrypted?: string | null;
           global_keywords?: Json | null;
           updated_at?: string;
         };

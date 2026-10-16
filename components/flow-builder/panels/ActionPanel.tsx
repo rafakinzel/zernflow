@@ -5,6 +5,7 @@ import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
 import { EnrollSequencePanel } from "./EnrollSequencePanel";
+import { ActiveCampaignPanel } from "./ActiveCampaignPanel";
 
 interface ActionPanelData {
   actionType?: NodeType;
@@ -63,6 +64,8 @@ export function ActionPanel({ data: rawData, onChange }: ActionPanelProps) {
       return <SmartDelayConfig data={data} onChange={onChange} />;
     case "enrollSequence":
       return <EnrollSequencePanel data={rawData} onChange={onChange} />;
+    case "activeCampaign":
+      return <ActiveCampaignPanel data={rawData} onChange={onChange} />;
     case "commentReply":
       return <CommentReplyConfig data={data} onChange={onChange} />;
     case "privateReply":

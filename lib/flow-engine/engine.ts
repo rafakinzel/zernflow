@@ -17,7 +17,13 @@ import type {
   PrivateReplyNodeData,
   AiResponseNodeData,
   EnrollSequenceNodeData,
+  ActiveCampaignNodeData,
 } from "./types";
+import {
+  addContactToList,
+  getWorkspaceCredentials,
+  syncContact,
+} from "@/lib/activecampaign";
 import { executeAiResponse } from "./nodes/ai-response";
 import { adaptMessage } from "./platform-adapter";
 import { createMessagingProvider } from "@/lib/messaging";
@@ -406,6 +412,7 @@ async function traverseNodes(
     executedType === "aiResponse" ||
     executedType === "httpRequest" ||
     executedType === "setCustomField" ||
+    executedType === "activeCampaign" ||
     result === "pause"
   ) {
     await supabase
@@ -486,6 +493,12 @@ async function executeNode(
       return executeSetField(supabase, node.data as SetFieldNodeData, context);
     case "httpRequest":
       return executeHttpRequest(node.data as HttpRequestNodeData, context);
+    case "activeCampaign":
+      return executeActiveCampaign(
+        supabase,
+        node.data as ActiveCampaignNodeData,
+        context
+      );
     case "goToFlow":
       return executeGoToFlow(supabase, node.data as GoToFlowNodeData, context, sessionId);
     case "humanTakeover":
@@ -973,6 +986,81 @@ async function executeHttpRequest(
     }
   } catch (error) {
     console.error("HTTP request failed:", error);
+  }
+}
+
+/**
+ * Sends the contact to ActiveCampaign and subscribes them to a list.
+ *
+ * Failures are logged rather than thrown, matching every other side-effect
+ * node here: a lead who reaches this point has already been messaged, and
+ * aborting the run would leave them mid-conversation with no reply. The
+ * contact's own email is the key, so a retry updates instead of duplicating.
+ */
+async function executeActiveCampaign(
+  supabase: SupabaseClient<Database>,
+  data: ActiveCampaignNodeData,
+  context: FlowExecutionContext
+) {
+  const vars = context.variables || {};
+  const fill = (value?: string) =>
+    value ? interpolateVariables(value, vars).trim() : "";
+
+  const email = fill(data.email);
+  if (!email) {
+    console.error(
+      "[activeCampaign] no email resolved; check the node's email field and that the flow captured one."
+    );
+    return;
+  }
+
+  try {
+    const credentials = await getWorkspaceCredentials(
+      supabase,
+      context.workspaceId
+    );
+    if (!credentials) {
+      console.error(
+        "[activeCampaign] workspace has no ActiveCampaign connection; connect it in Settings."
+      );
+      return;
+    }
+
+    // An empty value would blank a field the contact already had filled, so
+    // only send the ones that actually resolved to something.
+    const fieldValues = (data.fieldValues ?? [])
+      .map((fv) => ({ field: fv.field, value: fill(fv.value) }))
+      .filter((fv) => fv.field && fv.value);
+
+    const contactId = await syncContact(credentials, {
+      email,
+      firstName: fill(data.firstName) || undefined,
+      lastName: fill(data.lastName) || undefined,
+      phone: fill(data.phone) || undefined,
+      ...(fieldValues.length ? { fieldValues } : {}),
+    });
+
+    if (data.responseVariable) {
+      context.variables = { ...vars, [data.responseVariable]: contactId };
+    }
+
+    if (data.listId) {
+      // Separate try: the contact is already saved, and losing that because
+      // the subscribe failed would be the worse outcome of the two.
+      try {
+        await addContactToList(credentials, {
+          contactId,
+          listId: data.listId,
+        });
+      } catch (error) {
+        console.error(
+          `[activeCampaign] contact ${contactId} saved but not added to list ${data.listId}:`,
+          error
+        );
+      }
+    }
+  } catch (error) {
+    console.error("[activeCampaign] failed to sync contact:", error);
   }
 }
 

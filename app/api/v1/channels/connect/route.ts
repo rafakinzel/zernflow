@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createZernioClient } from "@/lib/zernio-client";
+import { decryptSecret } from "@/lib/secrets";
 import { PLATFORMS, isSupportedPlatform } from "@/lib/platforms";
 
 async function getWorkspace(supabase: Awaited<ReturnType<typeof createClient>>) {
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const zernio = createZernioClient(workspace.late_api_key_encrypted);
+  const zernio = createZernioClient(decryptSecret(workspace.late_api_key_encrypted));
 
   try {
     // Get profile ID (required by Zernio's connect endpoint)

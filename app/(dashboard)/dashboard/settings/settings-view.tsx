@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { ActiveCampaignSection } from "@/components/settings/activecampaign-section";
 
 interface WorkspaceSettings {
   id: string;
@@ -347,6 +348,10 @@ export function SettingsView({
               </p>
             )}
           </section>
+
+          <hr className="border-border" />
+
+          <ActiveCampaignSection />
 
           <hr className="border-border" />
 

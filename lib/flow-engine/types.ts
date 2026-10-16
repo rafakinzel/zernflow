@@ -31,7 +31,8 @@ export type NodeData =
   | CommentReplyNodeData
   | PrivateReplyNodeData
   | AiResponseNodeData
-  | EnrollSequenceNodeData;
+  | EnrollSequenceNodeData
+  | ActiveCampaignNodeData;
 
 export interface TriggerNodeData {
   triggerType: string;
@@ -91,6 +92,25 @@ export interface TagNodeData {
 export interface SetFieldNodeData {
   fieldSlug: string;
   value: string;
+}
+
+/**
+ * Sends the contact to ActiveCampaign. The credentials are not here on
+ * purpose: they live on the workspace, so rotating a key does not mean
+ * hunting through every node of every flow.
+ */
+export interface ActiveCampaignNodeData {
+  /** ActiveCampaign list id to subscribe to; empty means "contact only". */
+  listId?: string;
+  /** Interpolated before sending, so "{{email}}" is the usual value. */
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  /** Custom fields, keyed by the numeric ActiveCampaign field id. */
+  fieldValues?: Array<{ field: string; value: string }>;
+  /** Variable to receive the ActiveCampaign contact id, when set. */
+  responseVariable?: string;
 }
 
 export interface HttpRequestNodeData {

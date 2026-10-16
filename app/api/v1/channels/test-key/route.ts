@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createZernioClient } from "@/lib/zernio-client";
 import { createMessagingProvider } from "@/lib/messaging";
+import { encryptSecret } from "@/lib/secrets";
 import {
   ensureWebhookRegistered,
   getOrCreateWorkspaceWebhookSecret,
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
     // Save the API key
     const { error: saveErr } = await supabase
       .from("workspaces")
-      .update({ late_api_key_encrypted: apiKey.trim() })
+      .update({ late_api_key_encrypted: encryptSecret(apiKey.trim()) })
       .eq("id", workspaceId)
       .select("id")
       .single();

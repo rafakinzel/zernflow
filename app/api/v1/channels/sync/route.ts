@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createZernioClient } from "@/lib/zernio-client";
+import { decryptSecret } from "@/lib/secrets";
 import { createMessagingProvider } from "@/lib/messaging";
 import {
   ensureWebhookRegistered,
@@ -46,7 +47,7 @@ export async function POST() {
     );
   }
 
-  const zernio = createZernioClient(workspace.late_api_key_encrypted);
+  const zernio = createZernioClient(decryptSecret(workspace.late_api_key_encrypted));
 
   try {
     const res = await zernio.accounts.listAccounts();

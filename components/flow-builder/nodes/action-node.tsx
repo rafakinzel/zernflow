@@ -13,6 +13,7 @@ import {
   Cog,
   MessageCircleReply,
   Send,
+  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
@@ -32,6 +33,9 @@ export interface ActionNodeProps {
   paths?: Array<{ name: string; weight: number }>;
   timeout?: number;
   timeoutUnit?: string;
+  email?: string;
+  listId?: string;
+  fieldValues?: Array<{ field: string; value: string }>;
 }
 
 const actionConfig: Record<
@@ -51,6 +55,11 @@ const actionConfig: Record<
   setCustomField: {
     icon: FileText,
     label: "Set Field",
+    color: "bg-gray-500",
+  },
+  activeCampaign: {
+    icon: Mail,
+    label: "ActiveCampaign",
     color: "bg-gray-500",
   },
   httpRequest: {
@@ -134,6 +143,15 @@ function getSummary(nodeData: ActionNodeProps): string | null {
       return nodeData.timeout
         ? `Wait up to ${nodeData.timeout} ${nodeData.timeoutUnit || "minutes"}`
         : null;
+    case "activeCampaign": {
+      if (!nodeData.email) return null;
+      const extras = nodeData.fieldValues?.length
+        ? `, ${nodeData.fieldValues.length} campo(s)`
+        : "";
+      return nodeData.listId
+        ? `${nodeData.email} → lista ${nodeData.listId}${extras}`
+        : `${nodeData.email}, sem lista${extras}`;
+    }
     case "commentReply":
     case "privateReply":
       return nodeData.text || null;
