@@ -63,6 +63,10 @@ export function ActionPanel({ data: rawData, onChange }: ActionPanelProps) {
       return <SmartDelayConfig data={data} onChange={onChange} />;
     case "enrollSequence":
       return <EnrollSequencePanel data={rawData} onChange={onChange} />;
+    case "commentReply":
+      return <CommentReplyConfig data={data} onChange={onChange} />;
+    case "privateReply":
+      return <PrivateReplyConfig data={data} onChange={onChange} />;
     default:
       return (
         <p className="text-sm text-muted-foreground">
@@ -70,6 +74,86 @@ export function ActionPanel({ data: rawData, onChange }: ActionPanelProps) {
         </p>
       );
   }
+}
+
+/* ───────── Comment Reply Config ───────── */
+function CommentReplyConfig({ data, onChange }: ActionSubPanelProps) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border bg-muted p-4">
+        <p className="text-sm font-medium text-foreground">
+          Reply publicly under the comment
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Everyone sees this one, so it is what makes other people comment the
+          keyword too. Only runs on comment-triggered flows.
+        </p>
+      </div>
+
+      <div>
+        <label className="mb-2 block text-xs font-semibold text-foreground">
+          Reply text
+        </label>
+        <textarea
+          value={(data.text as string) || ""}
+          onChange={(e) => onChange({ ...data, text: e.target.value })}
+          placeholder="Check your inbox, just sent it to you!"
+          rows={3}
+          className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          Supports variables, e.g. {"{{first_name}}"} and{" "}
+          {"{{commenter_name}}"}. Instagram rejects a reply that repeats the
+          exact same text too often, so vary it between launches.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ───────── Private Reply Config ───────── */
+function PrivateReplyConfig({ data, onChange }: ActionSubPanelProps) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border bg-muted p-4">
+        <p className="text-sm font-medium text-foreground">
+          Send a DM to whoever commented
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Meta allows one private reply per comment, and it opens the 24h
+          window. A plain Send Message already falls back to this on a
+          comment-triggered flow, so use this node when you want the DM to be
+          explicit in the canvas.
+        </p>
+      </div>
+
+      <div>
+        <label className="mb-2 block text-xs font-semibold text-foreground">
+          Message
+        </label>
+        <textarea
+          value={(data.text as string) || ""}
+          onChange={(e) => onChange({ ...data, text: e.target.value })}
+          placeholder="Hey {{first_name}}, here is the link you asked for..."
+          rows={4}
+          className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </div>
+
+      <div>
+        <label className="mb-2 block text-xs font-semibold text-foreground">
+          Image URL (optional)
+        </label>
+        <input
+          type="text"
+          value={(data.imageUrl as string) || ""}
+          onChange={(e) => onChange({ ...data, imageUrl: e.target.value })}
+          placeholder="https://example.com/image.png"
+          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </div>
+    </div>
+  );
 }
 
 /* ───────── Tag Config ───────── */
