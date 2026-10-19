@@ -19,7 +19,7 @@ import "@xyflow/react/dist/style.css";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Rocket, Loader2, History, Play, Download, Trash2, AlertTriangle, Pause, LayoutGrid, Undo2, Redo2 } from "lucide-react";
+import { ArrowLeft, Save, Rocket, Loader2, History, Play, Download, Trash2, AlertTriangle, Pause, LayoutGrid, Undo2, Redo2, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { createClient } from "@/lib/supabase/client";
@@ -36,6 +36,7 @@ import { AiResponseNode } from "./nodes/AiResponseNode";
 import { NodeConfigSidebar } from "./panels/NodeConfigSidebar";
 import { VersionHistoryPanel } from "./panels/VersionHistoryPanel";
 import { TestPanel } from "./panels/TestPanel";
+import { ConversationPanel } from "./panels/ConversationPanel";
 
 type Flow = Database["public"]["Tables"]["flows"]["Row"];
 
@@ -121,6 +122,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [testPanelOpen, setTestPanelOpen] = useState(false);
+  const [conversationOpen, setConversationOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   /** The row's updated_at as this tab loaded it; the guard against stale saves. */
   const [baseUpdatedAt, setBaseUpdatedAt] = useState(flow.updated_at);
@@ -624,6 +626,25 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
           </button>
           <button
             onClick={() => {
+              setConversationOpen(!conversationOpen);
+              if (!conversationOpen) {
+                setTestPanelOpen(false);
+                setVersionPanelOpen(false);
+                setSelectedNodeId(null);
+              }
+            }}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+              conversationOpen
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-background hover:bg-accent"
+            )}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            Read
+          </button>
+          <button
+            onClick={() => {
               setTestPanelOpen(!testPanelOpen);
               if (!testPanelOpen) {
                 setVersionPanelOpen(false);
@@ -779,7 +800,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
             />
           </ReactFlow>
         </div>
-        {selectedNode && !versionPanelOpen && !testPanelOpen && (
+        {selectedNode && !versionPanelOpen && !testPanelOpen && !conversationOpen && (
           <NodeConfigSidebar
             node={selectedNode}
             nodes={nodes}
@@ -788,6 +809,17 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
             onClose={closeSidebar}
             onDelete={deleteNode}
             onDuplicate={(nodeId) => duplicateNodes([nodeId])}
+          />
+        )}
+        {conversationOpen && (
+          <ConversationPanel
+            nodes={nodes}
+            edges={edges}
+            onClose={() => setConversationOpen(false)}
+            onHighlightNode={(nodeId) => {
+              setConversationOpen(false);
+              setSelectedNodeId(nodeId);
+            }}
           />
         )}
         {versionPanelOpen && (

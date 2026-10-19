@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, Search, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FlowStatusToggle } from "./flow-status-toggle";
 import {
   DeleteFlowButton,
   DuplicateFlowButton,
@@ -173,7 +174,7 @@ export function FlowsList({ flows }: { flows: FlowRow[] }) {
           <span className="w-24 text-right">Completed</span>
           <span className="w-24 text-right">Messages</span>
           <span className="w-28 text-right">Last edited</span>
-          <span className="w-24" />
+          <span className="w-40" />
         </div>
 
         {visible.length === 0 ? (
@@ -275,7 +276,12 @@ export function FlowsList({ flows }: { flows: FlowRow[] }) {
                     <span className="w-28 text-right text-xs text-muted-foreground md:block">
                       {flow.updatedLabel}
                     </span>
-                    <span className="flex w-24 items-center justify-end gap-1 md:flex">
+                    <span className="flex w-40 items-center justify-end gap-1 md:flex">
+                      <FlowStatusToggle
+                        flowId={flow.id}
+                        status={flow.status}
+                        hasTrigger={flow.triggers.length > 0}
+                      />
                       <DuplicateFlowButton flow={flow} />
                       <ExportFlowButton flow={flow} />
                       <DeleteFlowButton flow={flow} />

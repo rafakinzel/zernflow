@@ -57,6 +57,36 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
     setNewReply("");
   }, [data, commentReplies, newReply, onChange]);
 
+  /**
+   * Edits a saved reply in place.
+   *
+   * These used to render as plain text, so fixing a typo meant deleting the
+   * line and retyping it. Blank is allowed while typing and cleaned up on
+   * blur, because an empty reply would post an empty comment.
+   */
+  const updateCommentReply = useCallback(
+    (index: number, value: string) => {
+      onChange({
+        ...data,
+        commentReplies: commentReplies.map((r, i) => (i === index ? value : r)),
+      });
+    },
+    [data, commentReplies, onChange]
+  );
+
+  const commitCommentReply = useCallback(
+    (index: number) => {
+      const value = (commentReplies[index] ?? "").trim();
+      onChange({
+        ...data,
+        commentReplies: value
+          ? commentReplies.map((r, i) => (i === index ? value : r))
+          : commentReplies.filter((_, i) => i !== index),
+      });
+    },
+    [data, commentReplies, onChange]
+  );
+
   const removeCommentReply = useCallback(
     (index: number) => {
       onChange({
@@ -99,6 +129,31 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
     (index: number) => {
       const updated = keywords.filter((_, i) => i !== index);
       onChange({ ...data, keywords: updated });
+    },
+    [data, keywords, onChange]
+  );
+
+  /** Edits a saved keyword in place; an emptied one is dropped on blur,
+      because a blank keyword would match every comment. */
+  const updateKeywordValue = useCallback(
+    (index: number, value: string) => {
+      onChange({
+        ...data,
+        keywords: keywords.map((k, i) => (i === index ? { ...k, value } : k)),
+      });
+    },
+    [data, keywords, onChange]
+  );
+
+  const commitKeyword = useCallback(
+    (index: number) => {
+      const value = (keywords[index]?.value ?? "").trim();
+      onChange({
+        ...data,
+        keywords: value
+          ? keywords.map((k, i) => (i === index ? { ...k, value } : k))
+          : keywords.filter((_, i) => i !== index),
+      });
     },
     [data, keywords, onChange]
   );
@@ -164,9 +219,14 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
                   key={index}
                   className="flex items-center gap-2 rounded-lg border border-border bg-card p-2"
                 >
-                  <span className="flex-1 truncate text-sm text-foreground">
-                    {keyword.value}
-                  </span>
+                  <input
+                    type="text"
+                    value={keyword.value}
+                    onChange={(e) => updateKeywordValue(index, e.target.value)}
+                    onBlur={() => commitKeyword(index)}
+                    placeholder="Keyword"
+                    className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm font-medium text-foreground focus:border-emerald-500 focus:bg-card focus:outline-none"
+                  />
                   <select
                     value={keyword.matchType}
                     onChange={(e) =>
@@ -280,7 +340,14 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
                   key={index}
                   className="flex items-start gap-2 rounded-lg border border-border bg-card p-2"
                 >
-                  <span className="flex-1 text-sm text-foreground">{reply}</span>
+                  <input
+                    type="text"
+                    value={reply}
+                    onChange={(e) => updateCommentReply(index, e.target.value)}
+                    onBlur={() => commitCommentReply(index)}
+                    placeholder="Reply text"
+                    className="flex-1 rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm text-foreground focus:border-emerald-500 focus:bg-card focus:outline-none"
+                  />
                   <button
                     type="button"
                     onClick={() => removeCommentReply(index)}

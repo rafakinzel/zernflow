@@ -59,6 +59,25 @@ export async function PUT(
   if (body.edges !== undefined) update.edges = body.edges;
   if (body.viewport !== undefined) update.viewport = body.viewport;
 
+  // Taking a flow off the air can happen from anywhere, including the flows
+  // list, so it is a plain field update. Putting one on the air is not: that
+  // goes through the publish route, which bumps the version and snapshots
+  // the graph. Allowing "published" here would let a flow go live with no
+  // version behind it and nothing to roll back to.
+  if (body.status !== undefined) {
+    if (body.status !== "draft" && body.status !== "archived") {
+      return NextResponse.json(
+        { error: "Use the publish endpoint to put a flow live." },
+        { status: 400 }
+      );
+    }
+    update.status = body.status;
+  }
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
+  }
+
   const { data: flow, error } = await supabase
     .from("flows")
     .update(update)
