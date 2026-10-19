@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { layoutFlow } from "@/lib/flow-layout";
 
 // --- Template types ---
 
@@ -286,13 +287,23 @@ export function TemplatesView({ workspaceId }: { workspaceId: string }) {
     setCreating(template.id);
 
     try {
+      // Templates carry hand-written coordinates, which froze them into
+      // whichever direction the canvas read in the day they were authored.
+      // Laying them out at creation time means a template describes its steps
+      // and its wiring, and nothing about where they sit: flip the canvas and
+      // every template follows, with nothing to rewrite.
+      const positions = layoutFlow(template.nodes, template.edges);
+      const nodes = template.nodes.map((node) =>
+        positions[node.id] ? { ...node, position: positions[node.id] } : node
+      );
+
       const res = await fetch("/api/v1/flows", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: template.name,
           description: template.description,
-          nodes: template.nodes,
+          nodes,
           edges: template.edges,
         }),
       });
