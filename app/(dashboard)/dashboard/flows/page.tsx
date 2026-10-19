@@ -2,52 +2,76 @@ import { getWorkspace } from "@/lib/workspace";
 import Link from "next/link";
 import { GitBranch, Sparkles, Plug } from "lucide-react";
 import { CreateFlowButton } from "@/components/create-flow-button";
-import { ImportFlowButton, ExportFlowButton, DeleteFlowButton, DuplicateFlowButton } from "@/components/flow-actions";
+import { ImportFlowButton } from "@/components/flow-actions";
+import { FlowsList, type FlowRow } from "@/components/flows/flows-list";
+import {
+  completionRate,
+  extractTriggers,
+  relativeTime,
+  tallyEvents,
+} from "@/lib/flow-insights";
 import type { FlowStatus } from "@/lib/types/database";
 
-const statusConfig: Record<FlowStatus, { label: string; classes: string }> = {
-  draft: {
-    label: "Draft",
-    classes:
-      "bg-muted text-muted-foreground",
-  },
-  published: {
-    label: "Published",
-    classes:
-      "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
-  },
-  archived: {
-    label: "Archived",
-    classes:
-      "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
-  },
-};
-
-function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+/**
+ * How many analytics rows the list reads to build its counts.
+ *
+ * The counts are folded in JS rather than by a database view, which is the
+ * right trade at this size and keeps the page free of a migration. The cap
+ * is what stops a busy workspace from pulling its whole history into a list
+ * page; past it the numbers become a floor, which is why the column is
+ * labelled Runs rather than presented as a complete history.
+ */
+const EVENT_SCAN_LIMIT = 20_000;
 
 export default async function FlowsPage() {
   const { workspace, supabase } = await getWorkspace();
 
-  const [{ data: flows }, { count: channelCount }] = await Promise.all([
-    supabase
-      .from("flows")
-      .select("id, name, description, status, updated_at, version, nodes, edges")
-      .eq("workspace_id", workspace.id)
-      .order("updated_at", { ascending: false }),
-    supabase
-      .from("channels")
-      .select("*", { count: "exact", head: true })
-      .eq("workspace_id", workspace.id)
-      .eq("is_active", true),
-  ]);
+  const [{ data: flows }, { count: channelCount }, { data: events }] =
+    await Promise.all([
+      supabase
+        .from("flows")
+        .select("id, name, description, status, updated_at, version, nodes, edges")
+        .eq("workspace_id", workspace.id)
+        .order("updated_at", { ascending: false }),
+      supabase
+        .from("channels")
+        .select("*", { count: "exact", head: true })
+        .eq("workspace_id", workspace.id)
+        .eq("is_active", true),
+      supabase
+        .from("analytics_events")
+        .select("flow_id, event_type")
+        .eq("workspace_id", workspace.id)
+        .in("event_type", ["flow_started", "flow_completed", "message_sent"])
+        .limit(EVENT_SCAN_LIMIT),
+    ]);
+
+  const counts = tallyEvents(events ?? []);
+  const now = new Date();
+
+  const rows: FlowRow[] = (flows ?? []).map((flow) => {
+    const flowCounts = counts[flow.id] ?? {
+      started: 0,
+      completed: 0,
+      messagesSent: 0,
+    };
+
+    return {
+      id: flow.id,
+      name: flow.name,
+      description: flow.description,
+      status: flow.status as FlowStatus,
+      updatedAt: flow.updated_at,
+      updatedLabel: relativeTime(flow.updated_at, now),
+      nodeCount: Array.isArray(flow.nodes) ? flow.nodes.length : 0,
+      triggers: extractTriggers(flow.nodes),
+      counts: flowCounts,
+      completion: completionRate(flowCounts.started, flowCounts.completed),
+      nodes: flow.nodes,
+      edges: flow.edges,
+      version: flow.version,
+    };
+  });
 
   return (
     <div className="flex h-full flex-col">
@@ -94,7 +118,7 @@ export default async function FlowsPage() {
         </div>
       )}
 
-      {!flows || flows.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="mt-12 rounded-xl border border-dashed border-border p-12 text-center">
           <GitBranch className="mx-auto h-10 w-10 text-muted-foreground" />
           <h2 className="mt-4 text-lg font-semibold">No flows yet</h2>
@@ -106,50 +130,8 @@ export default async function FlowsPage() {
           </div>
         </div>
       ) : (
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {flows.map((flow) => {
-            const status = statusConfig[flow.status as FlowStatus] ?? statusConfig.draft;
-            const nodeCount = Array.isArray(flow.nodes) ? flow.nodes.length : 0;
-
-            return (
-              <Link
-                key={flow.id}
-                href={`/dashboard/flows/${flow.id}`}
-                className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/50"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <GitBranch className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-medium group-hover:text-primary transition-colors">
-                          {flow.name}
-                        </h3>
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${status.classes}`}
-                        >
-                          {status.label}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {nodeCount} {nodeCount === 1 ? "node" : "nodes"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <DuplicateFlowButton flow={flow} />
-                    <ExportFlowButton flow={flow} />
-                    <DeleteFlowButton flow={flow} />
-                  </div>
-                </div>
-                <p className="mt-4 text-xs text-muted-foreground">
-                  Updated {formatDate(flow.updated_at)}
-                </p>
-              </Link>
-            );
-          })}
+        <div className="mt-4">
+          <FlowsList flows={rows} />
         </div>
       )}
       </div>
