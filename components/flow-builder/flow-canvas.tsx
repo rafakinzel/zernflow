@@ -526,6 +526,15 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
         setTimeout(() => setSaveError(null), 3000);
         return;
       }
+
+      // Publishing writes the row again, which moves `updated_at`. Adopting
+      // the value the server just wrote keeps this tab current; without it
+      // the next save would be refused as stale and the only way out was a
+      // reload, which is what made publishing an update impossible.
+      const published = await res.json().catch(() => null);
+      if (published?.updated_at) setBaseUpdatedAt(published.updated_at);
+      if (published?.status) setFlowStatus(published.status as FlowStatus);
+
       setSaveError(null);
       setLastSaved(new Date());
       router.refresh();
@@ -541,7 +550,8 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
           <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
           <p className="flex-1 text-sm text-foreground">
             This flow changed after you opened this tab, so nothing was saved and
-            the newer version is intact. Reload to pick it up.
+            the newer version is intact. Reloading picks it up and discards the
+            edits you made here, so copy anything you want to keep first.
           </p>
           <button
             type="button"

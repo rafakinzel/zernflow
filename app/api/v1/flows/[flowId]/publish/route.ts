@@ -39,16 +39,32 @@ export async function POST(
       { status: 404 }
     );
 
-  // Update flow status to published and increment version
+  // Update flow status to published and increment version.
+  //
+  // The updated row is read back because `updated_at` is stamped by a trigger
+  // and this write moves it. The builder guards every save with the
+  // `updated_at` it last saw, so returning the pre-update snapshot left the
+  // open tab holding a stale value: its next save matched no row, the
+  // conflict banner fired, and publishing was stuck until a reload.
   const newVersion = flow.version + 1;
-  await supabase
+  const { data: published, error: publishError } = await supabase
     .from("flows")
     .update({
       status: "published",
       published_at: new Date().toISOString(),
       version: newVersion,
     })
-    .eq("id", flowId);
+    .eq("id", flowId)
+    .eq("workspace_id", membership.workspace_id)
+    .select()
+    .single();
+
+  if (publishError || !published) {
+    return NextResponse.json(
+      { error: publishError?.message || "Could not publish this flow." },
+      { status: 500 }
+    );
+  }
 
   // Save version snapshot
   await supabase.from("flow_versions").insert({
@@ -97,5 +113,5 @@ export async function POST(
     .update({ is_active: true })
     .eq("flow_id", flowId);
 
-  return NextResponse.json({ ...flow, version: newVersion });
+  return NextResponse.json(published);
 }
