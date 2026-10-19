@@ -1,4 +1,5 @@
 import dagre from "@dagrejs/dagre";
+import { LAYOUT_RANKDIR } from "./flow-orientation";
 
 export interface LayoutNode {
   id: string;
@@ -65,7 +66,16 @@ export function layoutFlow(
   }
 
   const graph = new dagre.graphlib.Graph();
-  graph.setGraph({ rankdir: "TB", ranksep: 90, nodesep: 60, marginx: 40, marginy: 40 });
+  // Reading across needs more room between ranks than between rows: cards are
+  // far wider than they are tall, so the same gap looks cramped sideways.
+  const across = LAYOUT_RANKDIR === "LR";
+  graph.setGraph({
+    rankdir: LAYOUT_RANKDIR,
+    ranksep: across ? 140 : 90,
+    nodesep: across ? 48 : 60,
+    marginx: 40,
+    marginy: 40,
+  });
   graph.setDefaultEdgeLabel(() => ({}));
 
   const laidOut = nodes.filter((n) => connected.has(n.id));

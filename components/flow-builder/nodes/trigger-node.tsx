@@ -1,6 +1,10 @@
 "use client";
 
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, type NodeProps } from "@xyflow/react";
+import {
+  SOURCE_POSITION,
+  TARGET_POSITION,
+} from "@/lib/flow-orientation";
 import { Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -63,7 +67,7 @@ export function TriggerNode({ data, selected }: NodeProps) {
       </div>
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={SOURCE_POSITION}
         className="!h-3 !w-3 !border-2 !border-emerald-500 !bg-white"
       />
     </div>

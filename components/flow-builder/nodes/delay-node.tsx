@@ -1,6 +1,10 @@
 "use client";
 
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, type NodeProps } from "@xyflow/react";
+import {
+  SOURCE_POSITION,
+  TARGET_POSITION,
+} from "@/lib/flow-orientation";
 import { Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,7 +32,7 @@ export function DelayNode({ data, selected }: NodeProps) {
     >
       <Handle
         type="target"
-        position={Position.Top}
+        position={TARGET_POSITION}
         className="!h-3 !w-3 !border-2 !border-amber-500 !bg-white"
       />
       <div className="flex items-center gap-2 rounded-t-lg bg-amber-500 px-3 py-2 text-white">
@@ -48,7 +52,7 @@ export function DelayNode({ data, selected }: NodeProps) {
       </div>
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={SOURCE_POSITION}
         className="!h-3 !w-3 !border-2 !border-amber-500 !bg-white"
       />
     </div>

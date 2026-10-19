@@ -1,6 +1,12 @@
 "use client";
 
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, type NodeProps } from "@xyflow/react";
+import {
+  BRANCH_LABELS_CLASS,
+  SOURCE_POSITION,
+  TARGET_POSITION,
+  handleOffset,
+} from "@/lib/flow-orientation";
 import { GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +44,7 @@ export function ConditionNode({ data, selected }: NodeProps) {
     >
       <Handle
         type="target"
-        position={Position.Top}
+        position={TARGET_POSITION}
         className="!h-3 !w-3 !border-2 !border-violet-500 !bg-white"
       />
       <div className="flex items-center gap-2 rounded-t-lg bg-violet-500 px-3 py-2 text-white">
@@ -69,7 +75,7 @@ export function ConditionNode({ data, selected }: NodeProps) {
           <p className="mt-1 text-xs text-muted-foreground italic">No conditions set</p>
         )}
       </div>
-      <div className="flex justify-between border-t border-border px-3 py-1.5">
+      <div className={BRANCH_LABELS_CLASS}>
         <span className="text-[10px] font-medium text-emerald-600">
           Yes
         </span>
@@ -77,16 +83,16 @@ export function ConditionNode({ data, selected }: NodeProps) {
       </div>
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={SOURCE_POSITION}
         id="yes"
-        style={{ left: "30%" }}
+        style={handleOffset(0, 2)}
         className="!h-3 !w-3 !border-2 !border-emerald-500 !bg-white"
       />
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={SOURCE_POSITION}
         id="no"
-        style={{ left: "70%" }}
+        style={handleOffset(1, 2)}
         className="!h-3 !w-3 !border-2 !border-red-500 !bg-white"
       />
     </div>

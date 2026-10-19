@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { layoutFlow, type LayoutNode } from "./flow-layout";
+import { LAYOUT_RANKDIR } from "./flow-orientation";
+
+// The assertions talk about the direction the flow reads in, not about x and
+// y, so they keep testing the same property if the canvas is ever flipped.
+const ALONG = LAYOUT_RANKDIR === "LR" ? "x" : "y";
+const ACROSS = LAYOUT_RANKDIR === "LR" ? "y" : "x";
 
 function node(id: string, x = 0, y = 0, type = "sendMessage"): LayoutNode {
   return { id, type, position: { x, y } };
@@ -20,8 +26,8 @@ describe("layoutFlow", () => {
     const pos = layoutFlow(nodes, edges);
 
     expect(Object.keys(pos).sort()).toEqual(["a", "b", "c"]);
-    expect(pos.a.y).toBeLessThan(pos.b.y);
-    expect(pos.b.y).toBeLessThan(pos.c.y);
+    expect(pos.a[ALONG]).toBeLessThan(pos.b[ALONG]);
+    expect(pos.b[ALONG]).toBeLessThan(pos.c[ALONG]);
   });
 
   it("puts the two sides of a branch at the same depth, side by side", () => {
@@ -33,8 +39,8 @@ describe("layoutFlow", () => {
 
     const pos = layoutFlow(nodes, edges);
 
-    expect(pos.yes.y).toBe(pos.no.y);
-    expect(pos.yes.x).not.toBe(pos.no.x);
+    expect(pos.yes[ALONG]).toBe(pos.no[ALONG]);
+    expect(pos.yes[ACROSS]).not.toBe(pos.no[ACROSS]);
   });
 
   // Parking a node off to the side is deliberate; a layout pass that drags it
@@ -59,7 +65,7 @@ describe("layoutFlow", () => {
     const pos = layoutFlow(nodes, edges);
 
     expect(pos.deleted).toBeUndefined();
-    expect(pos.a.y).toBeLessThan(pos.b.y);
+    expect(pos.a[ALONG]).toBeLessThan(pos.b[ALONG]);
   });
 
   it("positions by the top-left corner, not the centre", () => {
@@ -76,17 +82,21 @@ describe("layoutFlow", () => {
     expect(pos.a.y).toBeGreaterThanOrEqual(0);
   });
 
-  it("uses measured sizes to space rows further apart than default ones", () => {
+  it("uses measured sizes to space steps further apart than default ones", () => {
     const edges = [{ source: "a", target: "b" }];
+    const big = ALONG === "x" ? { width: 900, height: 150 } : { width: 224, height: 600 };
+
     const plain = layoutFlow([node("a"), node("b")], edges);
-    const tall = layoutFlow(
+    const large = layoutFlow(
       [
-        { id: "a", type: "sendMessage", position: { x: 0, y: 0 }, measured: { width: 224, height: 600 } },
-        { id: "b", type: "sendMessage", position: { x: 0, y: 0 }, measured: { width: 224, height: 600 } },
+        { id: "a", type: "sendMessage", position: { x: 0, y: 0 }, measured: big },
+        { id: "b", type: "sendMessage", position: { x: 0, y: 0 }, measured: big },
       ],
       edges
     );
 
-    expect(tall.b.y - tall.a.y).toBeGreaterThan(plain.b.y - plain.a.y);
+    expect(large.b[ALONG] - large.a[ALONG]).toBeGreaterThan(
+      plain.b[ALONG] - plain.a[ALONG]
+    );
   });
 });

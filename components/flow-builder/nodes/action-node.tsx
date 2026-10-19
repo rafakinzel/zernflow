@@ -1,6 +1,12 @@
 "use client";
 
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, type NodeProps } from "@xyflow/react";
+import {
+  BRANCH_LABELS_CLASS,
+  SOURCE_POSITION,
+  TARGET_POSITION,
+  handleOffset,
+} from "@/lib/flow-orientation";
 import {
   Tag,
   FileText,
@@ -264,7 +270,7 @@ export function ActionNode({ data, selected }: NodeProps) {
       >
         <Handle
           type="target"
-          position={Position.Top}
+          position={TARGET_POSITION}
           className={cn("!h-2.5 !w-2.5 !border-2 !bg-white", style.handle)}
         />
         <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -273,7 +279,7 @@ export function ActionNode({ data, selected }: NodeProps) {
         </span>
         <Handle
           type="source"
-          position={Position.Bottom}
+          position={SOURCE_POSITION}
           className={cn("!h-2.5 !w-2.5 !border-2 !bg-white", style.handle)}
         />
       </div>
@@ -289,7 +295,7 @@ export function ActionNode({ data, selected }: NodeProps) {
     >
       <Handle
         type="target"
-        position={Position.Top}
+        position={TARGET_POSITION}
         className={cn("!h-3 !w-3 !border-2 !bg-white", style.handle)}
       />
       <div
@@ -315,38 +321,38 @@ export function ActionNode({ data, selected }: NodeProps) {
             <Handle
               key={path.name}
               type="source"
-              position={Position.Bottom}
+              position={SOURCE_POSITION}
               id={`split-${i}`}
-              style={{ left: `${((i + 1) / (paths.length + 1)) * 100}%` }}
+              style={handleOffset(i, paths.length)}
               className={cn("!h-3 !w-3 !border-2 !bg-white", style.handle)}
             />
           ))}
         </>
       ) : isSmartDelayWithTimeout ? (
         <>
-          <div className="flex justify-between px-3 pb-2 text-[10px] font-medium">
+          <div className={cn(BRANCH_LABELS_CLASS, "text-[10px] font-medium")}>
             <span className="text-emerald-600">Replied</span>
             <span className="text-amber-600">No reply</span>
           </div>
           <Handle
             type="source"
-            position={Position.Bottom}
+            position={SOURCE_POSITION}
             id="reply"
-            style={{ left: "30%" }}
+            style={handleOffset(0, 2)}
             className="!h-3 !w-3 !border-2 !border-emerald-500 !bg-white"
           />
           <Handle
             type="source"
-            position={Position.Bottom}
+            position={SOURCE_POSITION}
             id="timeout"
-            style={{ left: "70%" }}
+            style={handleOffset(1, 2)}
             className="!h-3 !w-3 !border-2 !border-amber-500 !bg-white"
           />
         </>
       ) : (
         <Handle
           type="source"
-          position={Position.Bottom}
+          position={SOURCE_POSITION}
           className={cn("!h-3 !w-3 !border-2 !bg-white", style.handle)}
         />
       )}
