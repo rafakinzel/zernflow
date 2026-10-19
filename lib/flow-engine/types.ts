@@ -43,10 +43,31 @@ export interface TriggerNodeData {
   payload?: string;
 }
 
+/**
+ * Work a node does after its own, without earning a node of its own.
+ *
+ * Storing a tag or a field used to cost a whole card on the canvas, so a
+ * four-step funnel drew as twelve. These ride along on the node that caused
+ * them instead. Only side effects are allowed: nothing here can branch, wait
+ * or hand the contact to another flow, because that would hide control flow
+ * inside a card that looks like a single step.
+ */
+export type PostAction =
+  | ({ actionType: "setCustomField" } & SetFieldNodeData)
+  | ({ actionType: "addTag" | "removeTag" } & TagNodeData)
+  | ({ actionType: "activeCampaign" } & ActiveCampaignNodeData);
+
 export interface SendMessageNodeData {
   messages: Array<{
     text?: string;
     imageUrl?: string;
+    /**
+     * Seconds to wait before this bubble is sent, so one card can hold a
+     * paced sequence instead of alternating message and delay nodes.
+     * Capped by the engine: this runs inside the request, so a long wait
+     * still belongs in a Delay node.
+     */
+    delaySeconds?: number;
     quickReplies?: Array<{ title: string; payload: string }>;
     buttons?: Array<{
       title: string;
@@ -68,6 +89,8 @@ export interface SendMessageNodeData {
       }>;
     };
   }>;
+  /** Side effects to run once the messages are out. */
+  postActions?: PostAction[];
 }
 
 export interface ConditionNodeData {

@@ -39,6 +39,67 @@ export interface ActionNodeProps {
   tagIds?: string[];
 }
 
+/**
+ * What an action does to the conversation, which is what the canvas should
+ * communicate at a glance. Colouring every action the same grey meant a
+ * zoomed-out flow was an undifferentiated column, so a reader had to click
+ * each card to find the one that waits or the one that ends the run.
+ */
+type ActionRole = "data" | "wait" | "integration" | "message" | "split" | "ending";
+
+const roleStyles: Record<
+  ActionRole,
+  { header: string; handle: string; selected: string }
+> = {
+  data: {
+    header: "bg-slate-500",
+    handle: "!border-slate-400",
+    selected: "border-slate-400",
+  },
+  wait: {
+    header: "bg-amber-500",
+    handle: "!border-amber-400",
+    selected: "border-amber-400",
+  },
+  integration: {
+    header: "bg-emerald-600",
+    handle: "!border-emerald-500",
+    selected: "border-emerald-500",
+  },
+  message: {
+    header: "bg-blue-500",
+    handle: "!border-blue-500",
+    selected: "border-blue-500",
+  },
+  split: {
+    header: "bg-violet-500",
+    handle: "!border-violet-400",
+    selected: "border-violet-400",
+  },
+  ending: {
+    header: "bg-rose-500",
+    handle: "!border-rose-400",
+    selected: "border-rose-400",
+  },
+};
+
+const actionRoles: Record<string, ActionRole> = {
+  addTag: "data",
+  removeTag: "data",
+  setCustomField: "data",
+  subscribe: "data",
+  unsubscribe: "data",
+  smartDelay: "wait",
+  activeCampaign: "integration",
+  httpRequest: "integration",
+  enrollSequence: "integration",
+  commentReply: "message",
+  privateReply: "message",
+  abSplit: "split",
+  goToFlow: "ending",
+  humanTakeover: "ending",
+};
+
 const actionConfig: Record<
   string,
   { icon: typeof Cog; label: string; color: string }
@@ -184,22 +245,57 @@ export function ActionNode({ data, selected }: NodeProps) {
   const isSmartDelayWithTimeout =
     actionType === "smartDelay" && Boolean(nodeData.timeout);
 
+  const role = actionRoles[actionType] ?? "data";
+  const style = roleStyles[role];
+
+  // Bookkeeping steps get a one-line pill rather than a full card. They are
+  // the most numerous nodes and the least interesting to read, so giving them
+  // the same footprint as a message made flows look twice as long as the
+  // conversation they describe.
+  const compact = role === "data" && !isAbSplit && !isSmartDelayWithTimeout;
+
+  if (compact) {
+    return (
+      <div
+        className={cn(
+          "flex w-44 items-center gap-2 rounded-full border bg-card px-3 py-1.5 shadow-sm transition-shadow",
+          selected ? cn(style.selected, "shadow-md") : "border-border"
+        )}
+      >
+        <Handle
+          type="target"
+          position={Position.Top}
+          className={cn("!h-2.5 !w-2.5 !border-2 !bg-white", style.handle)}
+        />
+        <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
+        <span className="truncate text-[11px] text-foreground">
+          {summary || config.label}
+        </span>
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          className={cn("!h-2.5 !w-2.5 !border-2 !bg-white", style.handle)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
         "w-56 rounded-lg border bg-card shadow-sm transition-shadow",
-        selected ? "border-gray-400 shadow-md" : "border-border"
+        selected ? cn(style.selected, "shadow-md") : "border-border"
       )}
     >
       <Handle
         type="target"
         position={Position.Top}
-        className="!h-3 !w-3 !border-2 !border-gray-400 !bg-white"
+        className={cn("!h-3 !w-3 !border-2 !bg-white", style.handle)}
       />
       <div
         className={cn(
           "flex items-center gap-2 rounded-t-lg px-3 py-2 text-white",
-          config.color
+          style.header
         )}
       >
         <Icon className="h-3.5 w-3.5" />
@@ -222,7 +318,7 @@ export function ActionNode({ data, selected }: NodeProps) {
               position={Position.Bottom}
               id={`split-${i}`}
               style={{ left: `${((i + 1) / (paths.length + 1)) * 100}%` }}
-              className="!h-3 !w-3 !border-2 !border-gray-400 !bg-white"
+              className={cn("!h-3 !w-3 !border-2 !bg-white", style.handle)}
             />
           ))}
         </>
@@ -251,7 +347,7 @@ export function ActionNode({ data, selected }: NodeProps) {
         <Handle
           type="source"
           position={Position.Bottom}
-          className="!h-3 !w-3 !border-2 !border-gray-400 !bg-white"
+          className={cn("!h-3 !w-3 !border-2 !bg-white", style.handle)}
         />
       )}
     </div>

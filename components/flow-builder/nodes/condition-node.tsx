@@ -33,15 +33,15 @@ export function ConditionNode({ data, selected }: NodeProps) {
     <div
       className={cn(
         "w-56 rounded-lg border bg-card shadow-sm transition-shadow",
-        selected ? "border-amber-500 shadow-md" : "border-border"
+        selected ? "border-violet-500 shadow-md" : "border-border"
       )}
     >
       <Handle
         type="target"
         position={Position.Top}
-        className="!h-3 !w-3 !border-2 !border-amber-500 !bg-white"
+        className="!h-3 !w-3 !border-2 !border-violet-500 !bg-white"
       />
-      <div className="flex items-center gap-2 rounded-t-lg bg-amber-500 px-3 py-2 text-white">
+      <div className="flex items-center gap-2 rounded-t-lg bg-violet-500 px-3 py-2 text-white">
         <GitBranch className="h-3.5 w-3.5" />
         <span className="text-xs font-semibold">Condition</span>
       </div>

@@ -1,17 +1,26 @@
 "use client";
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { MessageSquare } from "lucide-react";
+import { Clock, MessageSquare, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const POST_ACTION_LABELS: Record<string, string> = {
+  setCustomField: "save field",
+  addTag: "add tag",
+  removeTag: "remove tag",
+  activeCampaign: "ActiveCampaign",
+};
 
 export interface SendMessageNodeProps {
   label?: string;
   messages?: Array<{
     text?: string;
     imageUrl?: string;
+    delaySeconds?: number;
     quickReplies?: Array<{ title: string; payload: string }>;
     buttons?: Array<{ title: string; type: string; payload?: string; url?: string }>;
   }>;
+  postActions?: Array<{ actionType?: string }>;
 }
 
 export function SendMessageNode({ data, selected }: NodeProps) {
@@ -24,6 +33,18 @@ export function SendMessageNode({ data, selected }: NodeProps) {
       .map((b) => b.title?.trim())
       .filter((t): t is string => Boolean(t))
   );
+
+  // One card can now hold a paced sequence, so the total wait is worth
+  // showing: otherwise a node that takes 20 seconds to finish looks
+  // identical to one that fires instantly.
+  const pausedSeconds = (nodeData.messages ?? []).reduce(
+    (total, m) => total + Math.max(0, m.delaySeconds ?? 0),
+    0
+  );
+
+  const actionLabels = (nodeData.postActions ?? [])
+    .map((a) => (a.actionType ? POST_ACTION_LABELS[a.actionType] ?? a.actionType : null))
+    .filter((l): l is string => Boolean(l));
 
   return (
     <div
@@ -81,10 +102,36 @@ export function SendMessageNode({ data, selected }: NodeProps) {
           </div>
         )}
 
-        {messageCount > 1 && (
-          <span className="mt-2 inline-block rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
-            {messageCount} messages
-          </span>
+        {(messageCount > 1 || pausedSeconds > 0) && (
+          <div className="mt-2 flex flex-wrap items-center gap-1">
+            {messageCount > 1 && (
+              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                {messageCount} messages
+              </span>
+            )}
+            {pausedSeconds > 0 && (
+              <span className="flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <Clock className="h-2.5 w-2.5" />
+                {pausedSeconds}s
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Attached side effects, so the canvas still says what the step does
+            even though these no longer have cards of their own. */}
+        {actionLabels.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-border pt-2">
+            <Zap className="h-2.5 w-2.5 text-muted-foreground" />
+            {actionLabels.map((label, i) => (
+              <span
+                key={i}
+                className="max-w-full truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
         )}
       </div>
       <Handle

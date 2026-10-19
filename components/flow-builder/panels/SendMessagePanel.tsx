@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import { Plus, X, GripVertical, Image, Type, MousePointer, MessageCircle, LayoutGrid } from "lucide-react";
+import { Plus, X, GripVertical, Image, Type, MousePointer, MessageCircle, LayoutGrid, Clock, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { MessagePreview } from "./MessagePreview";
+import { ActiveCampaignPanel } from "./ActiveCampaignPanel";
 
 interface QuickReply {
   title: string;
@@ -39,12 +40,36 @@ interface Message {
   quickReplies?: QuickReply[];
   buttons?: Button[];
   carousel?: Carousel;
+  /** Seconds to wait before this bubble goes out. */
+  delaySeconds?: number;
+}
+
+type PostActionType =
+  | "setCustomField"
+  | "addTag"
+  | "removeTag"
+  | "activeCampaign";
+
+interface PostAction {
+  actionType: PostActionType;
+  [key: string]: unknown;
 }
 
 interface SendMessagePanelData {
   messages?: Message[];
+  postActions?: PostAction[];
   [key: string]: unknown;
 }
+
+/** Longest pause the engine will honour inside one bubble. */
+const MAX_PAUSE_SECONDS = 30;
+
+const POST_ACTION_LABELS: Record<PostActionType, string> = {
+  setCustomField: "Save a field",
+  addTag: "Add a tag",
+  removeTag: "Remove a tag",
+  activeCampaign: "ActiveCampaign",
+};
 
 interface SendMessagePanelProps {
   data: Record<string, unknown>;
@@ -115,15 +140,22 @@ export function SendMessagePanel({ data: rawData, onChange, availableVariables }
       </div>
 
       {messages.map((message, msgIndex) => (
-        <MessageEditor
-          key={msgIndex}
-          index={msgIndex}
-          message={message}
-          onChange={(updated) => updateMessage(msgIndex, updated)}
-          onRemove={() => removeMessage(msgIndex)}
-          canRemove={messages.length > 1}
-          availableVariables={availableVariables}
-        />
+        <div key={msgIndex} className="space-y-2">
+          <PauseControl
+            seconds={message.delaySeconds}
+            onChange={(seconds) =>
+              updateMessage(msgIndex, { ...message, delaySeconds: seconds })
+            }
+          />
+          <MessageEditor
+            index={msgIndex}
+            message={message}
+            onChange={(updated) => updateMessage(msgIndex, updated)}
+            onRemove={() => removeMessage(msgIndex)}
+            canRemove={messages.length > 1}
+            availableVariables={availableVariables}
+          />
+        </div>
       ))}
 
       <button
@@ -141,6 +173,11 @@ export function SendMessagePanel({ data: rawData, onChange, availableVariables }
         </p>
       )}
 
+      <PostActionsEditor
+        actions={data.postActions ?? []}
+        onChange={(postActions) => onChange({ ...data, postActions })}
+      />
+
       {/* Platform hints */}
       <div className="rounded-lg border border-border bg-muted p-3">
         <p className="text-xs font-medium text-muted-foreground">Platform notes</p>
@@ -154,6 +191,206 @@ export function SendMessagePanel({ data: rawData, onChange, availableVariables }
             contact&apos;s last message
           </li>
         </ul>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The pause before one bubble, shown as a divider between them.
+ *
+ * It sits here rather than on a node of its own because pacing a sequence
+ * used to mean a Delay node between every message, which turned a four-part
+ * explanation into seven cards on the canvas. Longer waits still belong in a
+ * Delay node: this one runs inside the request, so the field caps itself.
+ */
+function PauseControl({
+  seconds,
+  onChange,
+}: {
+  seconds?: number;
+  onChange: (seconds: number | undefined) => void;
+}) {
+  const active = typeof seconds === "number" && seconds > 0;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="h-px flex-1 bg-border" />
+      {active ? (
+        <span className="flex items-center gap-1.5 rounded-full border border-border bg-card px-2 py-1 text-[11px] text-muted-foreground">
+          <Clock className="h-3 w-3" />
+          <input
+            type="number"
+            min={0}
+            max={MAX_PAUSE_SECONDS}
+            value={seconds}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              if (!Number.isFinite(next) || next <= 0) return onChange(undefined);
+              onChange(Math.min(next, MAX_PAUSE_SECONDS));
+            }}
+            className="w-10 bg-transparent text-right tabular-nums outline-none"
+          />
+          <span>s pause</span>
+          <button
+            type="button"
+            onClick={() => onChange(undefined)}
+            className="ml-0.5 text-muted-foreground hover:text-red-500"
+            title="Remove pause"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onChange(3)}
+          className="flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:border-blue-400 hover:text-blue-500"
+        >
+          <Clock className="h-3 w-3" />
+          Add pause
+        </button>
+      )}
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+/**
+ * Side effects this node runs once its messages are out.
+ *
+ * Saving a field or applying a tag used to cost a card of its own, so a flow
+ * that tracked where people dropped off drew twice as wide as the
+ * conversation it described. Only side effects belong here: anything that
+ * branches or waits stays a node, so control flow is never hidden inside a
+ * card that looks like a single step.
+ */
+function PostActionsEditor({
+  actions,
+  onChange,
+}: {
+  actions: PostAction[];
+  onChange: (actions: PostAction[]) => void;
+}) {
+  const update = useCallback(
+    (index: number, next: PostAction) => {
+      onChange(actions.map((a, i) => (i === index ? next : a)));
+    },
+    [actions, onChange]
+  );
+
+  const remove = useCallback(
+    (index: number) => onChange(actions.filter((_, i) => i !== index)),
+    [actions, onChange]
+  );
+
+  const add = useCallback(
+    (actionType: PostActionType) => {
+      const blank: PostAction =
+        actionType === "setCustomField"
+          ? { actionType, fieldSlug: "", value: "" }
+          : actionType === "activeCampaign"
+            ? { actionType, email: "{{email}}" }
+            : { actionType, action: actionType === "addTag" ? "add" : "remove", tagName: "" };
+      onChange([...actions, blank]);
+    },
+    [actions, onChange]
+  );
+
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <div className="flex items-center gap-2">
+        <Zap className="h-3.5 w-3.5 text-muted-foreground" />
+        <p className="text-xs font-medium">Then also</p>
+      </div>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        Runs after the messages are sent, without adding a step to the canvas.
+      </p>
+
+      {actions.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {actions.map((action, index) => (
+            <div
+              key={index}
+              className="rounded-lg border border-border bg-muted/40 p-2.5"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium">
+                  {POST_ACTION_LABELS[action.actionType]}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => remove(index)}
+                  className="text-muted-foreground hover:text-red-500"
+                  title="Remove"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {action.actionType === "setCustomField" && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <input
+                    value={String(action.fieldSlug ?? "")}
+                    onChange={(e) =>
+                      update(index, { ...action, fieldSlug: e.target.value })
+                    }
+                    placeholder="field name"
+                    className="rounded border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-blue-400"
+                  />
+                  <input
+                    value={String(action.value ?? "")}
+                    onChange={(e) =>
+                      update(index, { ...action, value: e.target.value })
+                    }
+                    placeholder="value or {{variable}}"
+                    className="rounded border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-blue-400"
+                  />
+                </div>
+              )}
+
+              {(action.actionType === "addTag" ||
+                action.actionType === "removeTag") && (
+                <input
+                  value={String(action.tagName ?? "")}
+                  onChange={(e) =>
+                    update(index, { ...action, tagName: e.target.value })
+                  }
+                  placeholder="tag name"
+                  className="mt-2 w-full rounded border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-blue-400"
+                />
+              )}
+
+              {action.actionType === "activeCampaign" && (
+                <div className="mt-2">
+                  <ActiveCampaignPanel
+                    data={action as Record<string, unknown>}
+                    onChange={(next) =>
+                      update(index, {
+                        ...(next as PostAction),
+                        actionType: "activeCampaign",
+                      })
+                    }
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {(Object.keys(POST_ACTION_LABELS) as PostActionType[]).map((type) => (
+          <button
+            key={type}
+            type="button"
+            onClick={() => add(type)}
+            className="flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:border-blue-400 hover:text-blue-500"
+          >
+            <Plus className="h-3 w-3" />
+            {POST_ACTION_LABELS[type]}
+          </button>
+        ))}
       </div>
     </div>
   );

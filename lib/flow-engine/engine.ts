@@ -27,6 +27,12 @@ import {
 } from "@/lib/activecampaign";
 import { executeAiResponse } from "./nodes/ai-response";
 import { adaptMessage } from "./platform-adapter";
+import {
+  MAX_NODE_INLINE_DELAY_MS,
+  messageDelayMs,
+  readPostActions,
+  hasStatefulPostAction,
+} from "./pacing";
 import { createMessagingProvider } from "@/lib/messaging";
 import type { MessagingProvider, OutboundMessage } from "@/lib/messaging";
 
@@ -232,6 +238,7 @@ const MAX_TRAVERSAL_DEPTH = 50;
 /** Delays at or below this run inline instead of going through the cron. */
 const INLINE_DELAY_MAX_MS = 10_000;
 
+
 // Thrown before resumeSession advances current_node_id, so callers may retry
 // without cancelling the session.
 export class FlowLoadError extends Error {}
@@ -424,6 +431,7 @@ async function traverseNodes(
     executedType === "httpRequest" ||
     executedType === "setCustomField" ||
     executedType === "activeCampaign" ||
+    hasStatefulPostAction(node.data) ||
     result === "pause"
   ) {
     await supabase
@@ -482,7 +490,59 @@ function resolveNodeType(node: FlowNode): FlowNode["type"] {
   return (actionType ?? node.type) as FlowNode["type"];
 }
 
+/**
+ * Runs the side effects a node carries, in order.
+ *
+ * Each one is isolated: these are bookkeeping, and losing a tag must not stop
+ * the contact's journey or the remaining actions. That matches how the
+ * standalone versions of these nodes already behave.
+ */
+async function runPostActions(
+  supabase: SupabaseClient<Database>,
+  node: FlowNode,
+  context: FlowExecutionContext
+) {
+  for (const action of readPostActions(node.data)) {
+    try {
+      switch (action.actionType) {
+        case "setCustomField":
+          await executeSetField(supabase, action, context);
+          break;
+        case "addTag":
+        case "removeTag":
+          await executeTag(supabase, action, context);
+          break;
+        case "activeCampaign":
+          await executeActiveCampaign(supabase, action, context);
+          break;
+      }
+    } catch (error) {
+      console.error(
+        `[postAction] ${action.actionType} failed on node ${node.id}:`,
+        error
+      );
+    }
+  }
+}
+
 async function executeNode(
+  supabase: SupabaseClient<Database>,
+  node: FlowNode,
+  context: FlowExecutionContext,
+  sessionId: string
+): Promise<string | void> {
+  const result = await executePrimary(supabase, node, context, sessionId);
+
+  // A paused node has not finished its step yet: a Smart Delay waiting on a
+  // reply would otherwise fire its side effects now and again on resume.
+  if (result !== "pause") {
+    await runPostActions(supabase, node, context);
+  }
+
+  return result;
+}
+
+async function executePrimary(
   supabase: SupabaseClient<Database>,
   node: FlowNode,
   context: FlowExecutionContext,
@@ -652,7 +712,20 @@ async function executeSendMessage(
     lateConversationId = conversation.late_conversation_id;
   }
 
-  for (const msg of data.messages) {
+  // Budget for the pauses this node is allowed to take. They run inside the
+  // request, so the cap is what keeps a mistyped "600" from holding a webhook
+  // open for ten minutes; anything longer belongs in a Delay node, which
+  // parks the session properly.
+  let delayBudgetMs = MAX_NODE_INLINE_DELAY_MS;
+
+  for (const [index, msg] of data.messages.entries()) {
+    const waitMs = messageDelayMs(msg.delaySeconds, index, delayBudgetMs);
+
+    if (waitMs > 0) {
+      delayBudgetMs -= waitMs;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+
     const adapted = adaptMessage(msg, context.platform!);
     const text = interpolateVariables(adapted.text, context.variables || {});
 
@@ -724,11 +797,6 @@ async function executeSendMessage(
         event_type: "message_failed",
         metadata: { error: error instanceof Error ? error.message : "Unknown error" },
       });
-    }
-
-    // Small delay between messages
-    if (data.messages.length > 1) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
 }

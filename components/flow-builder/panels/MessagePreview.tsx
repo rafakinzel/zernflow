@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo } from "react";
-import { ImageIcon, Music, Video } from "lucide-react";
+import { Clock, ImageIcon, Music, Video } from "lucide-react";
 
 interface QuickReply {
   title: string;
@@ -23,6 +23,7 @@ interface CarouselElement {
 }
 
 export interface PreviewMessage {
+  delaySeconds?: number;
   text?: string;
   imageUrl?: string;
   mediaUrl?: string;
@@ -138,8 +139,19 @@ export function MessagePreview({ messages }: { messages: PreviewMessage[] }) {
           message.quickReplies?.filter((q) => q.title.trim()) ?? [];
         const cards = message.carousel?.elements ?? [];
 
+        const pause = message.delaySeconds;
+
         return (
-          <div key={i} className="max-w-[88%] space-y-1.5">
+          <div key={i} className="space-y-1.5">
+            {/* The pause is part of how the thread arrives, so the preview
+                shows the beat rather than collapsing the bubbles together. */}
+            {typeof pause === "number" && pause > 0 && (
+              <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Clock className="h-2.5 w-2.5" />
+                {pause}s
+              </p>
+            )}
+            <div className="max-w-[88%] space-y-1.5">
             {(message.text?.trim() || mediaUrl) && (
               <div className="rounded-2xl rounded-bl-md bg-card px-3 py-2 text-[13px] leading-snug text-foreground shadow-sm">
                 {mediaUrl && mediaType && (
@@ -208,6 +220,7 @@ export function MessagePreview({ messages }: { messages: PreviewMessage[] }) {
                 ))}
               </div>
             )}
+            </div>
           </div>
         );
       })}

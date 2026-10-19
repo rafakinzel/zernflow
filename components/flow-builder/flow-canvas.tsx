@@ -17,12 +17,13 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Rocket, Loader2, History, Play, Download, Trash2, AlertTriangle, Pause } from "lucide-react";
+import { ArrowLeft, Save, Rocket, Loader2, History, Play, Download, Trash2, AlertTriangle, Pause, LayoutGrid, Undo2, Redo2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { createClient } from "@/lib/supabase/client";
+import { layoutFlow } from "@/lib/flow-layout";
 import type { Database, FlowStatus, Json } from "@/lib/types/database";
 
 import { NodePalette } from "./node-palette";
@@ -37,6 +38,29 @@ import { VersionHistoryPanel } from "./panels/VersionHistoryPanel";
 import { TestPanel } from "./panels/TestPanel";
 
 type Flow = Database["public"]["Tables"]["flows"]["Row"];
+
+/**
+ * What each branch of a node means, written on the line itself.
+ *
+ * Without this a reader has to click an edge to find out whether it is the
+ * yes or the no, which on a flow of this size means clicking a lot.
+ */
+const HANDLE_LABELS: Record<string, string> = {
+  yes: "Yes",
+  true: "Yes",
+  no: "No",
+  false: "No",
+  reply: "Replied",
+  timeout: "No reply",
+};
+
+/** How many edits back undo can reach. */
+const UNDO_LIMIT = 50;
+
+interface GraphSnapshot {
+  nodes: Node[];
+  edges: Edge[];
+}
 
 const nodeTypes: NodeTypes = {
   trigger: TriggerNode,
@@ -111,8 +135,105 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
     ? nodes.find((n) => n.id === selectedNodeId) || null
     : null;
 
+  // Past graph states, newest last. Kept here rather than derived from React
+  // Flow's own change events because a single drag fires dozens of them and
+  // undo should step back one edit, not one pixel.
+  const past = useRef<GraphSnapshot[]>([]);
+  const future = useRef<GraphSnapshot[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  const snapshot = useCallback((): GraphSnapshot => {
+    return {
+      nodes: nodes.map((n) => ({ ...n, position: { ...n.position } })),
+      edges: edges.map((e) => ({ ...e })),
+    };
+  }, [nodes, edges]);
+
+  /** Call before a change worth undoing. */
+  const checkpoint = useCallback(() => {
+    past.current = [...past.current.slice(-(UNDO_LIMIT - 1)), snapshot()];
+    future.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+  }, [snapshot]);
+
+  const undo = useCallback(() => {
+    const previous = past.current.pop();
+    if (!previous) return;
+    future.current = [...future.current, snapshot()];
+    setNodes(previous.nodes);
+    setEdges(previous.edges);
+    setCanUndo(past.current.length > 0);
+    setCanRedo(true);
+  }, [snapshot, setNodes, setEdges]);
+
+  const redo = useCallback(() => {
+    const next = future.current.pop();
+    if (!next) return;
+    past.current = [...past.current, snapshot()];
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setCanUndo(true);
+    setCanRedo(future.current.length > 0);
+  }, [snapshot, setNodes, setEdges]);
+
+  const autoArrange = useCallback(() => {
+    const positions = layoutFlow(nodes, edges);
+    if (Object.keys(positions).length === 0) return;
+    checkpoint();
+    setNodes((nds) =>
+      nds.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n))
+    );
+  }, [nodes, edges, checkpoint, setNodes]);
+
+  /**
+   * Edge labels are derived rather than stored, so a handle renamed in code
+   * never leaves stale wording saved on a flow, and what gets saved stays the
+   * plain edge the engine reads.
+   */
+  const labelledEdges = useMemo(
+    () =>
+      edges.map((edge) => {
+        const label = edge.sourceHandle
+          ? HANDLE_LABELS[edge.sourceHandle]
+          : undefined;
+        if (!label) return edge;
+        return {
+          ...edge,
+          label,
+          labelShowBg: true,
+          labelBgPadding: [6, 2] as [number, number],
+          labelBgBorderRadius: 4,
+          labelStyle: { fill: "var(--muted-foreground)", fontSize: 10 },
+          labelBgStyle: { fill: "var(--card)", stroke: "var(--border)" },
+        };
+      }),
+    [edges]
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.key.toLowerCase() !== "z") return;
+      // Let the browser handle undo inside whatever the person is typing in.
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) {
+        return;
+      }
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo]);
+
   const onConnect = useCallback(
     (connection: Connection) => {
+      checkpoint();
       setEdges((eds) =>
         addEdge(
           {
@@ -124,7 +245,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
         )
       );
     },
-    [setEdges]
+    [setEdges, checkpoint]
   );
 
   const onDragOver = useCallback((event: DragEvent) => {
@@ -157,9 +278,10 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
         data: getDefaultData(type, actionType || nodeType),
       };
 
+      checkpoint();
       setNodes((nds) => [...nds, newNode]);
     },
-    [screenToFlowPosition, setNodes]
+    [screenToFlowPosition, setNodes, checkpoint]
   );
 
   const onNodeClick = useCallback(
@@ -190,11 +312,12 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
 
   const deleteNode = useCallback(
     (nodeId: string) => {
+      checkpoint();
       setNodes((nds) => nds.filter((n) => n.id !== nodeId));
       setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
       setSelectedNodeId(null);
     },
-    [setNodes, setEdges]
+    [setNodes, setEdges, checkpoint]
   );
 
   /**
@@ -210,6 +333,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
    */
   const duplicateNodes = useCallback(
     (ids?: string[]) => {
+      checkpoint();
       setNodes((nds) => {
         const wanted = ids?.length
           ? nds.filter((n) => ids.includes(n.id))
@@ -255,7 +379,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
         return [...nds.map((n) => ({ ...n, selected: false })), ...copies];
       });
     },
-    [setNodes, setEdges]
+    [setNodes, setEdges, checkpoint]
   );
 
   // Cmd/Ctrl+D duplicates the selection. Prevented first, because the browser
@@ -475,6 +599,30 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
             </span>
           )}
           <button
+            onClick={undo}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+            className="inline-flex items-center rounded-lg border border-border bg-background px-2 py-1.5 text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={redo}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Shift+Z)"
+            className="inline-flex items-center rounded-lg border border-border bg-background px-2 py-1.5 text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Redo2 className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={autoArrange}
+            title="Tidy up the layout"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            Arrange
+          </button>
+          <button
             onClick={() => {
               setTestPanelOpen(!testPanelOpen);
               if (!testPanelOpen) {
@@ -606,7 +754,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
         <div ref={reactFlowWrapper} className="flex-1">
           <ReactFlow
             nodes={nodes}
-            edges={edges}
+            edges={labelledEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
