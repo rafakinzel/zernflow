@@ -1,7 +1,7 @@
 import { getWorkspace } from "@/lib/workspace";
 import { AnalyticsView } from "./analytics-view";
-import { InstagramInsightsBlock } from "@/components/analytics/instagram-insights-block";
 import { PostLeaderboardBlock } from "@/components/analytics/post-leaderboard-block";
+import { AnalyticsTabs } from "@/components/analytics/analytics-tabs";
 
 export default async function AnalyticsPage() {
   const { workspace, supabase } = await getWorkspace();
@@ -143,12 +143,11 @@ export default async function AnalyticsPage() {
 
   return (
     <>
-      {/* Both of these wait on Zernio, so they load themselves rather than
-          holding up the counts below, which come from our own database. The
-          order is deliberate: what the audience did, then what it produced,
-          then the flow and message detail. */}
-      <div className="space-y-4 px-6 pt-6">
-        <InstagramInsightsBlock />
+      <AnalyticsTabs />
+
+      {/* Loads itself rather than holding up the counts below, which come
+          from our own database and should not queue behind Zernio. */}
+      <div className="px-6 pt-6">
         <PostLeaderboardBlock />
       </div>
 
