@@ -58,11 +58,21 @@ interface PostAction {
 interface SendMessagePanelData {
   messages?: Message[];
   postActions?: PostAction[];
+  waitForReply?: boolean;
+  timeout?: number;
+  timeoutUnit?: string;
   [key: string]: unknown;
 }
 
 /** Longest pause the engine will honour inside one bubble. */
 const MAX_PAUSE_SECONDS = 30;
+
+/**
+ * Meta accepts a free-form message for 24 hours after the person's last
+ * action, so a wait set to 24 fires its no-reply branch exactly on the
+ * boundary and the message is refused. Twenty leaves room for the queue.
+ */
+const SAFE_WAIT_HOURS = 20;
 
 const POST_ACTION_LABELS: Record<PostActionType, string> = {
   setCustomField: "Save a field",
@@ -138,6 +148,13 @@ export function SendMessagePanel({ data: rawData, onChange, availableVariables }
         </p>
         <MessagePreview messages={messages} />
       </div>
+
+      <WaitControl
+        waitForReply={Boolean(data.waitForReply)}
+        timeout={data.timeout}
+        timeoutUnit={data.timeoutUnit}
+        onChange={(next) => onChange({ ...data, ...next })}
+      />
 
       {messages.map((message, msgIndex) => (
         <div key={msgIndex} className="space-y-2">
@@ -1015,6 +1032,106 @@ function CarouselCardEditor({
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Whether this step waits for an answer, and for how long.
+ *
+ * It lives on the message because the buttons do: the wait is what gives
+ * each of them an exit. Turning it off leaves the step with one way out,
+ * the way any message without a question has.
+ */
+function WaitControl({
+  waitForReply,
+  timeout,
+  timeoutUnit,
+  onChange,
+}: {
+  waitForReply: boolean;
+  timeout?: number;
+  timeoutUnit?: string;
+  onChange: (next: {
+    waitForReply: boolean;
+    timeout?: number;
+    timeoutUnit?: string;
+  }) => void;
+}) {
+  const unit = timeoutUnit || "hours";
+  const overWindow = unit === "hours" && (timeout ?? 0) > SAFE_WAIT_HOURS;
+
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <label className="flex cursor-pointer items-start gap-2">
+        <input
+          type="checkbox"
+          checked={waitForReply}
+          onChange={(e) =>
+            onChange(
+              e.target.checked
+                ? { waitForReply: true, timeout: timeout ?? SAFE_WAIT_HOURS, timeoutUnit: unit }
+                : { waitForReply: false, timeout: undefined, timeoutUnit: undefined }
+            )
+          }
+          className="mt-0.5 h-3.5 w-3.5 accent-primary"
+        />
+        <span>
+          <span className="block text-xs font-medium">Wait for an answer</span>
+          <span className="block text-[11px] text-muted-foreground">
+            Each button gets its own exit, and a separate one for anything
+            else they might type.
+          </span>
+        </span>
+      </label>
+
+      {waitForReply && (
+        <div className="mt-3 border-t border-border pt-3">
+          <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+            Give up after
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              value={timeout ?? ""}
+              onChange={(e) =>
+                onChange({
+                  waitForReply: true,
+                  timeout: e.target.value ? Number(e.target.value) : undefined,
+                  timeoutUnit: unit,
+                })
+              }
+              className="h-8 w-20 rounded-lg border border-border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-primary/25"
+            />
+            <select
+              value={unit}
+              onChange={(e) =>
+                onChange({ waitForReply: true, timeout, timeoutUnit: e.target.value })
+              }
+              className="h-8 rounded-lg border border-border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-primary/25"
+            >
+              <option value="minutes">minutes</option>
+              <option value="hours">hours</option>
+              <option value="days">days</option>
+            </select>
+          </div>
+
+          {overWindow ? (
+            <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-500">
+              Instagram stops accepting messages {SAFE_WAIT_HOURS + 4} hours
+              after the person last wrote, so a &quot;no reply&quot; message sent
+              at {timeout}h is likely to be refused. {SAFE_WAIT_HOURS} is the
+              longest that still arrives.
+            </p>
+          ) : (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Nothing wired to &quot;No reply&quot; means the conversation simply
+              ends when the time runs out.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
