@@ -238,7 +238,7 @@ function getSummary(nodeData: ActionNodeProps): string | null {
 
 export function ActionNode({ data, selected }: NodeProps) {
   const nodeData = data as ActionNodeProps;
-  const exits = nodeData.exits ?? [];
+  const deadExits = (nodeData.exits ?? []).filter((e) => !e.targetId);
   const actionType = nodeData.actionType || "addTag";
   const config = actionConfig[actionType] || {
     icon: Cog,
@@ -320,9 +320,9 @@ export function ActionNode({ data, selected }: NodeProps) {
           <p className="mt-1 text-xs text-muted-foreground italic">Not configured</p>
         )}
 
-        {exits.length > 0 && (
-          <div className="mt-2 space-y-1.5 border-t border-border pt-2">
-            {exits.map((exit) => (
+        {deadExits.length > 0 && (
+          <div className="mt-2 space-y-1 border-t border-border pt-2">
+            {deadExits.map((exit) => (
               <NodeExit key={exit.key} destination={exit} tone="muted" />
             ))}
           </div>

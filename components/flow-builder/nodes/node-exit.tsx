@@ -1,15 +1,17 @@
-import { CornerDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Destination } from "@/lib/flow-destinations";
 
 /**
- * One way out of a node, with where it goes written underneath.
+ * One way out of a node.
  *
- * The canvas answer to "what leads where" used to be: follow the line. That
- * works until the line crosses the whole screen, and it never works at all
- * for an exit nobody wired, because a line that was never drawn looks
- * exactly like one that goes nowhere. Naming the destination in place
- * answers both, and an unwired exit says so in its own words.
+ * An earlier version wrote the destination's text under every exit. It
+ * answered "what leads where" and made the card unreadable doing it, which
+ * is a bad trade on a canvas whose whole job is to be scanned. The line
+ * belongs on the canvas; the card keeps only what the line cannot show.
+ *
+ * What the line cannot show is an exit nobody wired, because a line never
+ * drawn looks exactly like one that goes nowhere. That one still gets a
+ * word, and nothing else does.
  */
 export function NodeExit({
   destination,
@@ -24,31 +26,24 @@ export function NodeExit({
   const dead = !destination.targetId;
 
   return (
-    <div className="min-w-0">
-      <div className="flex items-baseline gap-1.5">
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate rounded-full border px-1.5 py-0.5 text-[10px]",
-            tone === "muted"
-              ? "border-border text-muted-foreground"
-              : "border-blue-200 text-blue-700 dark:border-blue-900 dark:text-blue-300"
-          )}
-        >
-          {destination.label}
-        </span>
-        {trailing}
-      </div>
-      <div
+    <div className="flex items-center gap-1.5">
+      <span
         className={cn(
-          "mt-0.5 flex items-center gap-1 pl-1.5 text-[10px]",
-          dead ? "text-amber-600 dark:text-amber-500" : "text-muted-foreground"
+          "min-w-0 flex-1 truncate rounded-full border px-1.5 py-0.5 text-[10px]",
+          tone === "muted"
+            ? "border-border text-muted-foreground"
+            : "border-blue-200 text-blue-700 dark:border-blue-900 dark:text-blue-300"
         )}
       >
-        <CornerDownRight className="h-2.5 w-2.5 shrink-0" />
-        <span className="truncate">
-          {dead ? "ends the conversation" : destination.targetTitle}
+        {destination.label}
+      </span>
+      {dead ? (
+        <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-500">
+          ends here
         </span>
-      </div>
+      ) : (
+        trailing
+      )}
     </div>
   );
 }

@@ -112,7 +112,7 @@ export function SendMessageNode({ data, selected }: NodeProps) {
         {/* Button titles rather than a count: two nodes asking a yes/no
             question look identical until you can read the answers. */}
         {exits.length > 0 ? (
-          <div className="mt-2 space-y-1.5">
+          <div className="mt-2 space-y-1">
             {exits.map((exit) => {
               const taps = tapsByPayload.get(exit.key);
               return (

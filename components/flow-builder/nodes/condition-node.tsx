@@ -38,7 +38,7 @@ export function ConditionNode({ data, selected }: NodeProps) {
   const label = nodeData.label || "Condition";
   const conditions = nodeData.conditions || [];
   const logic = nodeData.logic || "and";
-  const exits = nodeData.exits ?? [];
+  const deadExits = (nodeData.exits ?? []).filter((e) => !e.targetId);
 
   return (
     <div
@@ -80,9 +80,9 @@ export function ConditionNode({ data, selected }: NodeProps) {
           <p className="mt-1 text-xs text-muted-foreground italic">No conditions set</p>
         )}
 
-        {exits.length > 0 && (
-          <div className="mt-2 space-y-1.5 border-t border-border pt-2">
-            {exits.map((exit) => (
+        {deadExits.length > 0 && (
+          <div className="mt-2 space-y-1 border-t border-border pt-2">
+            {deadExits.map((exit) => (
               <NodeExit key={exit.key} destination={exit} tone="muted" />
             ))}
           </div>
