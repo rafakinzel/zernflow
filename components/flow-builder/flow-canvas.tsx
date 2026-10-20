@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { layoutFlow } from "@/lib/flow-layout";
+import type { NodeStat } from "@/lib/flow-engine/node-stats";
 import type { Database, FlowStatus, Json } from "@/lib/types/database";
 
 import { NodePalette } from "./node-palette";
@@ -120,6 +121,9 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
   const [publishing, setPublishing] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [nodeStats, setNodeStats] = useState<Record<string, NodeStat> | null>(
+    null
+  );
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [testPanelOpen, setTestPanelOpen] = useState(false);
   const [conversationOpen, setConversationOpen] = useState(false);
@@ -188,6 +192,40 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
       nds.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n))
     );
   }, [nodes, edges, checkpoint, setNodes]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/v1/flows/${flow.id}/stats`);
+        if (!res.ok || cancelled) return;
+        const body = await res.json();
+        if (!cancelled) setNodeStats(body.stats ?? null);
+      } catch {
+        // The canvas is for editing. Numbers failing to load is not an error
+        // worth putting in front of someone mid-edit.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [flow.id]);
+
+  /**
+   * Numbers ride on the rendered copy of a node, never on the saved one.
+   * Merging them into `nodes` would persist last month's counts into the
+   * flow definition on the next autosave.
+   */
+  const nodesWithStats = useMemo(() => {
+    if (!nodeStats) return nodes;
+    return nodes.map((node) =>
+      nodeStats[node.id]
+        ? { ...node, data: { ...node.data, stats: nodeStats[node.id] } }
+        : node
+    );
+  }, [nodes, nodeStats]);
 
   /**
    * Edge labels are derived rather than stored, so a handle renamed in code
@@ -784,7 +822,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
         <NodePalette />
         <div ref={reactFlowWrapper} className="flex-1">
           <ReactFlow
-            nodes={nodes}
+            nodes={nodesWithStats}
             edges={labelledEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}

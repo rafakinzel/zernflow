@@ -35,6 +35,7 @@ import {
 } from "./pacing";
 import { createMessagingProvider } from "@/lib/messaging";
 import { hoursSince, messagingWindow } from "./messaging-window";
+import { findPayloadOwner } from "./node-stats";
 import type { MessagingProvider, OutboundMessage } from "@/lib/messaging";
 
 /**
@@ -318,6 +319,7 @@ export async function resumeSession(
   // The payload is the stable handle for a tap; the label can be reworded.
   if (tapped) {
     context.variables.payload = tapped;
+    await recordButtonTap(supabase, nodes, context, tapped);
   }
 
   // The contact replied, so the Smart Delay give-up job must not fire later
@@ -1700,4 +1702,38 @@ async function withinMessagingWindow(
   });
 
   return false;
+}
+
+
+/**
+ * Records which button a person pressed.
+ *
+ * The tap arrives knowing only its payload, and the node waiting for it is
+ * the Smart Delay after the message, not the message that drew the button.
+ * Resolving the owner here means the builder can show a share per button
+ * later without re-deriving it from the flow every time it is read.
+ *
+ * A payload nothing offers is still worth recording, with no node attached:
+ * it means a button was removed from the flow while someone still had the
+ * old message on screen, and that is worth being able to see.
+ */
+async function recordButtonTap(
+  supabase: SupabaseClient<Database>,
+  nodes: FlowNode[],
+  context: FlowExecutionContext,
+  payload: string
+): Promise<void> {
+  const owner = findPayloadOwner(nodes as unknown as { id: string }[], payload);
+
+  await supabase.from("analytics_events").insert({
+    workspace_id: context.workspaceId,
+    flow_id: context.flowId,
+    contact_id: context.contactId,
+    event_type: "button_tapped",
+    metadata: {
+      payload,
+      nodeId: owner?.nodeId ?? null,
+      title: owner?.title ?? null,
+    } as unknown as Json,
+  });
 }

@@ -5,7 +5,8 @@ import {
   SOURCE_POSITION,
   TARGET_POSITION,
 } from "@/lib/flow-orientation";
-import { Clock, MessageSquare, Zap } from "lucide-react";
+import { Clock, MessageSquare, Users, Zap } from "lucide-react";
+import type { NodeStat } from "@/lib/flow-engine/node-stats";
 import { cn } from "@/lib/utils";
 
 const POST_ACTION_LABELS: Record<string, string> = {
@@ -25,6 +26,8 @@ export interface SendMessageNodeProps {
     buttons?: Array<{ title: string; type: string; payload?: string; url?: string }>;
   }>;
   postActions?: Array<{ actionType?: string }>;
+  /** Attached by the canvas for display only; never saved on the flow. */
+  stats?: NodeStat;
 }
 
 export function SendMessageNode({ data, selected }: NodeProps) {
@@ -46,6 +49,12 @@ export function SendMessageNode({ data, selected }: NodeProps) {
     0
   );
 
+  const stats = nodeData.stats;
+  // Buttons carry their own share once there are numbers, which is the
+  // reading a node-level count cannot give: not how many got here, but which
+  // of the options they took and which one nobody takes.
+  const buttonStats = stats?.buttons ?? [];
+
   const actionLabels = (nodeData.postActions ?? [])
     .map((a) => (a.actionType ? POST_ACTION_LABELS[a.actionType] ?? a.actionType : null))
     .filter((l): l is string => Boolean(l));
@@ -65,6 +74,15 @@ export function SendMessageNode({ data, selected }: NodeProps) {
       <div className="flex items-center gap-2 rounded-t-lg bg-blue-500 px-3 py-2 text-white">
         <MessageSquare className="h-3.5 w-3.5" />
         <span className="text-xs font-semibold">Send Message</span>
+        {stats && (
+          <span
+            className="ml-auto flex items-center gap-1 text-[10px] font-medium tabular-nums"
+            title="People who reached this step in the last 30 days"
+          >
+            <Users className="h-2.5 w-2.5" />
+            {stats.reached}
+          </span>
+        )}
       </div>
       <div className="p-3">
         {/* The header already says "Send Message", so the default label would
@@ -88,22 +106,41 @@ export function SendMessageNode({ data, selected }: NodeProps) {
 
         {/* Button titles rather than a count: two nodes asking a yes/no
             question look identical until you can read the answers. */}
-        {replyTitles.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {replyTitles.slice(0, 2).map((title, i) => (
-              <span
-                key={i}
-                className="max-w-full truncate rounded-full border border-blue-200 px-1.5 py-0.5 text-[10px] text-blue-700 dark:border-blue-900 dark:text-blue-300"
+        {buttonStats.length > 0 ? (
+          <div className="mt-2 space-y-1">
+            {buttonStats.map((button) => (
+              <div
+                key={button.payload}
+                className="flex items-center gap-1.5 text-[10px]"
               >
-                {title}
-              </span>
+                <span className="min-w-0 flex-1 truncate rounded-full border border-blue-200 px-1.5 py-0.5 text-blue-700 dark:border-blue-900 dark:text-blue-300">
+                  {button.title}
+                </span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">
+                  {button.taps}
+                  {button.rate !== null && ` · ${Math.round(button.rate * 100)}%`}
+                </span>
+              </div>
             ))}
-            {replyTitles.length > 2 && (
-              <span className="rounded-full px-1 py-0.5 text-[10px] text-muted-foreground">
-                +{replyTitles.length - 2}
-              </span>
-            )}
           </div>
+        ) : (
+          replyTitles.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {replyTitles.slice(0, 2).map((title, i) => (
+                <span
+                  key={i}
+                  className="max-w-full truncate rounded-full border border-blue-200 px-1.5 py-0.5 text-[10px] text-blue-700 dark:border-blue-900 dark:text-blue-300"
+                >
+                  {title}
+                </span>
+              ))}
+              {replyTitles.length > 2 && (
+                <span className="rounded-full px-1 py-0.5 text-[10px] text-muted-foreground">
+                  +{replyTitles.length - 2}
+                </span>
+              )}
+            </div>
+          )
         )}
 
         {(messageCount > 1 || pausedSeconds > 0) && (
