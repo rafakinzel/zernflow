@@ -29,6 +29,8 @@ export interface RawNode {
 export interface RawEdge {
   source: string;
   target: string;
+  /** A button's payload, for the per-button exits; absent on a plain edge. */
+  sourceHandle?: string | null;
 }
 
 /**
@@ -192,4 +194,33 @@ export function tally<T>(rows: T[], key: (row: T) => string | null | undefined) 
     counts[value] = (counts[value] ?? 0) + 1;
   }
   return counts;
+}
+
+/**
+ * Every node that offers a payload and has an exit drawn for it.
+ *
+ * People tap a button they have scrolled back to. The flow has moved on by
+ * then, so the node the session is parked on knows nothing about that
+ * payload, and routing from where the session happens to be sends them
+ * somewhere they did not choose. The button itself still knows where it goes,
+ * and this is how to ask it.
+ *
+ * Several nodes can offer the same payload, because a rescue re-offers the
+ * original buttons. The caller settles which one by looking at what was
+ * actually sent to this person most recently; this only narrows the field.
+ */
+export function payloadRoutes(
+  nodes: RawNode[],
+  edges: RawEdge[],
+  payload: string
+): Array<{ nodeId: string; targetId: string }> {
+  const routes: Array<{ nodeId: string; targetId: string }> = [];
+  for (const node of nodes) {
+    if (!nodeOptions(node).some((o) => o.payload === payload)) continue;
+    const edge = edges.find(
+      (e) => e.source === node.id && e.sourceHandle === payload
+    );
+    if (edge) routes.push({ nodeId: node.id, targetId: edge.target });
+  }
+  return routes;
 }

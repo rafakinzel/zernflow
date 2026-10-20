@@ -4,8 +4,7 @@ import {
   findPayloadOwner,
   nodeOptions,
   tally,
-  type RawNode,
-} from "./node-stats";
+  type RawNode, payloadRoutes } from "./node-stats";
 
 const messageNode = (id: string, options: Array<[string | null, string | null]>): RawNode => ({
   id,
@@ -206,5 +205,54 @@ describe("tally", () => {
       A: 2,
       B: 1,
     });
+  });
+});
+
+describe("payloadRoutes", () => {
+  const nodes = [
+    {
+      id: "pitch",
+      type: "sendMessage",
+      data: {
+        waitForReply: true,
+        messages: [{ buttons: [{ payload: "SIM", title: "Sim" }, { payload: "NAO", title: "Não" }] }],
+      },
+    },
+    {
+      id: "rescue",
+      type: "sendMessage",
+      data: {
+        waitForReply: true,
+        messages: [{ buttons: [{ payload: "SIM", title: "Sim" }] }],
+      },
+    },
+    { id: "booking", type: "sendMessage", data: { messages: [{ text: "link" }] } },
+    { id: "course", type: "sendMessage", data: { messages: [{ text: "curso" }] } },
+  ];
+  const edges = [
+    { source: "pitch", target: "booking", sourceHandle: "SIM" },
+    { source: "pitch", target: "course", sourceHandle: "NAO" },
+    { source: "rescue", target: "booking", sourceHandle: "SIM" },
+  ];
+
+  it("finds the one node that owns a payload", () => {
+    expect(payloadRoutes(nodes, edges, "NAO")).toEqual([
+      { nodeId: "pitch", targetId: "course" },
+    ]);
+  });
+
+  it("reports both owners of a reused payload, for the caller to settle", () => {
+    expect(payloadRoutes(nodes, edges, "SIM")).toEqual([
+      { nodeId: "pitch", targetId: "booking" },
+      { nodeId: "rescue", targetId: "booking" },
+    ]);
+  });
+
+  it("ignores a button with no exit drawn, since it routes nothing", () => {
+    expect(payloadRoutes(nodes, edges.slice(0, 1), "NAO")).toEqual([]);
+  });
+
+  it("says nothing about a payload the flow does not offer", () => {
+    expect(payloadRoutes(nodes, edges, "FA_VELHO")).toEqual([]);
   });
 });

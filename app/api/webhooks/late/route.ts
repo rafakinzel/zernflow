@@ -341,7 +341,47 @@ async function processMessageEvent(
           .order("updated_at", { ascending: false })
           .limit(1);
 
-        const waitingSession = waitingSessions?.[0];
+        const tapped =
+          incomingMessage.postbackPayload ||
+          incomingMessage.quickReplyPayload ||
+          incomingMessage.callbackData;
+
+        // A tap with no run waiting for it. The flow finished, the person
+        // scrolled back up and pressed the other button, and until now that
+        // was answered with silence. The button still knows where it goes, so
+        // the finished run is reopened and the engine follows it.
+        //
+        // Only a run that finished on its own, and only inside the 24h window
+        // we could reply in anyway. A cancelled run was cancelled on purpose
+        // (a keyword restart), and reopening it would talk over the new one.
+        let reopened: { id: string; flow_id: string } | null = null;
+        if (!waitingSessions?.[0] && tapped) {
+          const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          const { data: finished } = await supabase
+            .from("flow_sessions")
+            .select("id, flow_id, current_node_id")
+            .eq("contact_id", contactId)
+            .eq("channel_id", channel.id)
+            .eq("status", "completed")
+            .is("human_takeover_at", null)
+            .gte("updated_at", dayAgo)
+            .order("updated_at", { ascending: false })
+            .limit(1);
+
+          const session = finished?.[0];
+          if (session) {
+            const { data: live } = await supabase
+              .from("flow_sessions")
+              .update({ status: "active", waiting_for_input: true })
+              .eq("id", session.id)
+              .eq("status", "completed")
+              .select("id, flow_id")
+              .single();
+            if (live) reopened = live;
+          }
+        }
+
+        const waitingSession = waitingSessions?.[0] ?? reopened;
 
         if (waitingSession) {
           try {

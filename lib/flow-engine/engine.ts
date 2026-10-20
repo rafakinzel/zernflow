@@ -35,7 +35,7 @@ import {
 } from "./pacing";
 import { createMessagingProvider } from "@/lib/messaging";
 import { hoursSince, messagingWindow } from "./messaging-window";
-import { findPayloadOwner, nodeOptions } from "./node-stats";
+import { findPayloadOwner, nodeOptions, payloadRoutes } from "./node-stats";
 import { resolveReply } from "./reply-matching";
 import type { MessagingProvider, OutboundMessage } from "@/lib/messaging";
 
@@ -362,15 +362,16 @@ export async function resumeSession(
   // answer to a question is a person, so the automation stops here rather
   // than picking a branch the person did not choose.
   const typed = context.incomingMessage.text;
+  // nodeOptions reads the message bubbles off any node shape; the typed union
+  // here is narrower than it needs to be for a structural read.
+  const offered = nodeOptions(
+    currentNode as unknown as Parameters<typeof nodeOptions>[0]
+  ).map((o) => ({ payload: o.payload!, title: o.title }));
+
   const resolution = resolveReply({
     tappedPayload: tapped,
     text: typed,
-    // nodeOptions reads the message bubbles off any node shape; the typed
-    // union here is narrower than it needs to be for a structural read.
-    options: nodeOptions(currentNode as unknown as Parameters<typeof nodeOptions>[0]).map((o) => ({
-      payload: o.payload!,
-      title: o.title,
-    })),
+    options: offered,
     hasCatchAll: outgoing.some((e) => e.sourceHandle === "reply"),
   });
 
@@ -386,6 +387,57 @@ export async function resumeSession(
     answered = resolution.handle;
     context.variables.payload = answered;
     await recordButtonTap(supabase, nodes, edges, currentNode.id, context, answered);
+  }
+
+  // A button tapped after the flow has moved on, which is what happens when
+  // someone changes their mind and scrolls back up. The payload belongs to
+  // the message that drew it, not to wherever the session is parked, so route
+  // through the button itself. Without this the tap fell through to the
+  // current node's first exit and answered a question nobody asked.
+  //
+  // Only from a node that draws its own buttons, or one with no exits left at
+  // all. A run parked on a separate Smart Delay is the older shape, where the
+  // tap is read downstream by a condition and the generic "replied" exit is
+  // the correct way out; sending that shape down here would strand it.
+  const parkedOnDecision = offered.length > 0 || outgoing.length === 0;
+  if (
+    answered &&
+    parkedOnDecision &&
+    !outgoing.some((e) => e.sourceHandle === answered)
+  ) {
+    // Two taps on the same button is one answer, pressed twice: a slow reply
+    // invites a second press. The tap that arrived was already recorded
+    // above, so an earlier one inside the window means this is the repeat.
+    if (await alreadyTapped(supabase, context, answered)) {
+      console.info(`[engine] ignored a repeat tap on ${answered}`);
+      return;
+    }
+
+    const owner = await resolveOffNodeTap(supabase, nodes, edges, context, answered);
+    if (!owner) {
+      // A payload this flow does not route, usually a button from a version
+      // that has since been edited. Guessing a branch is worse than silence,
+      // and a person can read what they wanted.
+      await handOverToHuman(supabase, context, session.id, currentNode.id, typed ?? answered);
+      return;
+    }
+
+    const changedMind = nodes.find((n) => n.id === owner.targetId);
+    if (!changedMind) {
+      await completeSession(supabase, session.id);
+      return;
+    }
+
+    console.info(
+      `[engine] ${answered} tapped from ${owner.nodeId} while parked on ${currentNode.id}; following the button`
+    );
+    await supabase
+      .from("flow_sessions")
+      .update({ current_node_id: owner.nodeId })
+      .eq("id", session.id);
+
+    await traverseNodes(supabase, session.id, changedMind, nodes, edges, context, 0);
+    return;
   }
 
   // Get next node after the current one. A Smart Delay with a timeout has two
@@ -1867,4 +1919,78 @@ async function handOverToHuman(
   console.info(
     `[engine] handed conversation ${context.conversationId} to a human: free text at ${nodeId}`
   );
+}
+
+/**
+ * Which message a tap came from, when it was not the one being waited on.
+ *
+ * A payload is deliberately reused: a rescue re-offers the original buttons.
+ * So several nodes can claim the same tap, and the one that gets it is the
+ * one most recently sent to this person, which is the message they were
+ * looking at when they tapped. Where that cannot be established, nothing is
+ * returned rather than a guess.
+ */
+async function resolveOffNodeTap(
+  supabase: SupabaseClient<Database>,
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  context: FlowExecutionContext,
+  payload: string
+): Promise<{ nodeId: string; targetId: string } | null> {
+  const routes = payloadRoutes(
+    nodes as unknown as Parameters<typeof payloadRoutes>[0],
+    edges as unknown as Parameters<typeof payloadRoutes>[1],
+    payload
+  );
+  if (routes.length === 0) return null;
+  if (routes.length === 1) return routes[0];
+
+  // Every claimant leads to the same place, so which one is academic.
+  if (routes.every((r) => r.targetId === routes[0].targetId)) return routes[0];
+
+  const { data: executed } = await supabase
+    .from("analytics_events")
+    .select("metadata")
+    .eq("contact_id", context.contactId)
+    .eq("flow_id", context.flowId)
+    .eq("event_type", "node_executed")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  for (const event of executed ?? []) {
+    const nodeId = (event.metadata as { nodeId?: string } | null)?.nodeId;
+    const hit = routes.find((r) => r.nodeId === nodeId);
+    if (hit) return hit;
+  }
+
+  return null;
+}
+
+/** How long two taps on one button count as the same answer. */
+const REPEAT_TAP_MS = 2 * 60 * 1000;
+
+/**
+ * True when this button was already answered a moment ago.
+ *
+ * A reply takes a second or two to arrive and people press again. Routing the
+ * second press sends the same message twice, which reads as a bug to the
+ * person receiving it. Two minutes is short enough that pressing the same
+ * button on a rescue hours later still counts, which is a real answer.
+ */
+async function alreadyTapped(
+  supabase: SupabaseClient<Database>,
+  context: FlowExecutionContext,
+  payload: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("analytics_events")
+    .select("id")
+    .eq("contact_id", context.contactId)
+    .eq("flow_id", context.flowId)
+    .eq("event_type", "button_tapped")
+    .contains("metadata", { payload })
+    .gte("created_at", new Date(Date.now() - REPEAT_TAP_MS).toISOString());
+
+  // The tap being handled right now is already in this count.
+  return (data?.length ?? 0) > 1;
 }
