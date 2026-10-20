@@ -18,6 +18,7 @@ export default async function AnalyticsPage() {
     contactsRes,
     sentRes,
     failedRes,
+    skippedRes,
     startsRes,
     completionsRes,
     flowsListRes,
@@ -44,6 +45,13 @@ export default async function AnalyticsPage() {
       .select("*", { count: "exact", head: true })
       .eq("workspace_id", workspace.id)
       .eq("event_type", "message_failed")
+      .gte("created_at", thirtyDaysAgo)
+      .lte("created_at", now),
+    supabase
+      .from("analytics_events")
+      .select("*", { count: "exact", head: true })
+      .eq("workspace_id", workspace.id)
+      .eq("event_type", "message_skipped_window")
       .gte("created_at", thirtyDaysAgo)
       .lte("created_at", now),
     supabase
@@ -159,6 +167,7 @@ export default async function AnalyticsPage() {
             totalContacts: contactsRes.count ?? 0,
             messagesSent: sentRes.count ?? 0,
             messagesFailed: failedRes.count ?? 0,
+            messagesSkippedWindow: skippedRes.count ?? 0,
           },
           flowPerformance,
           contactGrowth,

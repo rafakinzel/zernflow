@@ -34,6 +34,7 @@ import {
   hasStatefulPostAction,
 } from "./pacing";
 import { createMessagingProvider } from "@/lib/messaging";
+import { hoursSince, messagingWindow } from "./messaging-window";
 import type { MessagingProvider, OutboundMessage } from "@/lib/messaging";
 
 /**
@@ -712,6 +713,15 @@ async function executeSendMessage(
     }
     lateConversationId = conversation.late_conversation_id;
   }
+
+  // Meta refuses a free-form message more than 24 hours after the person's
+  // last action, and the refusal reaches a flow as a message that simply
+  // never arrived. Checking first turns that into a recorded fact.
+  //
+  // Only the plain DM path is checked. A private reply to a comment runs on
+  // its own window and is how the conversation opens in the first place, so
+  // it is handled above and never reaches here.
+  if (!(await withinMessagingWindow(supabase, context))) return;
 
   // Budget for the pauses this node is allowed to take. They run inside the
   // request, so the cap is what keeps a mistyped "600" from holding a webhook
@@ -1643,4 +1653,51 @@ function interpolateVariables(
     .replace(/[ \t]+([,.!?;:])/g, "$1")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
+}
+
+
+/**
+ * Whether the platform will still accept a free-form message to this contact.
+ *
+ * Returns true when it cannot be proven otherwise: our record of inbound
+ * messages can be incomplete, and refusing on missing data would invent a
+ * failure. A refusal is written to analytics_events, so "how many rescues
+ * died to the 24-hour window" is a number rather than a suspicion.
+ */
+async function withinMessagingWindow(
+  supabase: SupabaseClient<Database>,
+  context: FlowExecutionContext
+): Promise<boolean> {
+  const { data: lastInbound } = await supabase
+    .from("messages")
+    .select("created_at")
+    .eq("conversation_id", context.conversationId)
+    .eq("direction", "inbound")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const state = messagingWindow(lastInbound?.created_at ?? null);
+  if (state.open) return true;
+
+  const silentFor = lastInbound?.created_at
+    ? hoursSince(lastInbound.created_at)
+    : null;
+
+  console.warn(
+    `[engine] skipped a send: the 24h window closed (last inbound ${silentFor}h ago, conversation ${context.conversationId})`
+  );
+
+  await supabase.from("analytics_events").insert({
+    workspace_id: context.workspaceId,
+    flow_id: context.flowId,
+    contact_id: context.contactId,
+    event_type: "message_skipped_window",
+    metadata: {
+      reason: state.reason,
+      hoursSinceLastInbound: silentFor,
+    } as unknown as Json,
+  });
+
+  return false;
 }

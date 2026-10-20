@@ -10,6 +10,7 @@ import {
   TrendingUp,
   TrendingDown,
   Calendar,
+  Clock,
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,8 @@ interface Stats {
   totalContacts: number;
   messagesSent: number;
   messagesFailed: number;
+  /** Refused by Meta's 24-hour window before we ever tried to send. */
+  messagesSkippedWindow: number;
 }
 
 interface FlowPerformance {
@@ -233,7 +236,7 @@ export function AnalyticsView({
         : getDateRange(timeRange);
 
     try {
-      const [flowsRes, contactsRes, sentRes, failedRes, startsRes, completionsRes, flowsListRes, contactEvents, msgEvents] = await Promise.all([
+      const [flowsRes, contactsRes, sentRes, failedRes, skippedRes, startsRes, completionsRes, flowsListRes, contactEvents, msgEvents] = await Promise.all([
         supabase
           .from("flows")
           .select("*", { count: "exact", head: true })
@@ -254,6 +257,13 @@ export function AnalyticsView({
           .select("*", { count: "exact", head: true })
           .eq("workspace_id", workspaceId)
           .eq("event_type", "message_failed")
+          .gte("created_at", range.start)
+          .lte("created_at", range.end),
+        supabase
+          .from("analytics_events")
+          .select("*", { count: "exact", head: true })
+          .eq("workspace_id", workspaceId)
+          .eq("event_type", "message_skipped_window")
           .gte("created_at", range.start)
           .lte("created_at", range.end),
         supabase
@@ -298,6 +308,7 @@ export function AnalyticsView({
         totalContacts: contactsRes.count ?? 0,
         messagesSent: sentRes.count ?? 0,
         messagesFailed: failedRes.count ?? 0,
+        messagesSkippedWindow: skippedRes.count ?? 0,
       });
 
       // Flow performance
@@ -398,6 +409,15 @@ export function AnalyticsView({
       icon: AlertTriangle,
       color: "text-red-600",
       bg: "bg-red-100",
+    },
+    {
+      // Not a failure: the send was never attempted, because Meta refuses a
+      // free-form message more than 24 hours after the person last wrote.
+      label: "Outside 24h window",
+      value: stats.messagesSkippedWindow,
+      icon: Clock,
+      color: "text-amber-600",
+      bg: "bg-amber-100",
     },
   ];
 
