@@ -33,6 +33,11 @@ export interface Destination {
   /** Null when this exit leads nowhere, which is the point of showing it. */
   targetId: string | null;
   targetTitle: string | null;
+  /**
+   * What happens when nothing is wired here, for the exits where that is a
+   * real behaviour rather than a dead end. Absent means it does end here.
+   */
+  unwiredNote?: string;
 }
 
 /** Enough to cross a delay and a condition a few times over. */
@@ -265,12 +270,15 @@ export function nodeDestinations(
             ...named(edgeFrom(edges, node.id, button.payload)?.target),
           });
         }
-        // Free text matches no button. Without this exit the reply has
-        // nowhere to go and the conversation ends mid-sentence, so it is
-        // shown and connectable like any other.
+        // Someone can always type instead of tapping. Words that match a
+        // button are read as that button, so this exit is only for the rest,
+        // which is nearly always a question. Left unwired it goes to a
+        // person, which is usually what a question deserves; wire it and the
+        // flow answers instead.
         exits.push({
           key: "reply",
           label: "Anything else",
+          unwiredNote: "a human replies",
           ...named(edgeFrom(edges, node.id, "reply")?.target),
         });
       } else if (buttons.length > 0) {

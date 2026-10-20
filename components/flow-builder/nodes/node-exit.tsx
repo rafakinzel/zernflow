@@ -11,7 +11,8 @@ import type { Destination } from "@/lib/flow-destinations";
  *
  * What the line cannot show is an exit nobody wired, because a line never
  * drawn looks exactly like one that goes nowhere. That one still gets a
- * word, and nothing else does.
+ * word, and nothing else does. For a couple of exits an empty one is not a
+ * dead end at all but a deliberate behaviour, and those say which.
  */
 export function NodeExit({
   destination,
@@ -38,8 +39,15 @@ export function NodeExit({
         {destination.label}
       </span>
       {dead ? (
-        <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-500">
-          ends here
+        <span
+          className={cn(
+            "shrink-0 text-[10px]",
+            destination.unwiredNote
+              ? "text-muted-foreground"
+              : "text-amber-600 dark:text-amber-500"
+          )}
+        >
+          {destination.unwiredNote ?? "ends here"}
         </span>
       ) : (
         trailing

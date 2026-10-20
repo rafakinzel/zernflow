@@ -35,7 +35,8 @@ import {
 } from "./pacing";
 import { createMessagingProvider } from "@/lib/messaging";
 import { hoursSince, messagingWindow } from "./messaging-window";
-import { findPayloadOwner } from "./node-stats";
+import { findPayloadOwner, nodeOptions } from "./node-stats";
+import { resolveReply } from "./reply-matching";
 import type { MessagingProvider, OutboundMessage } from "@/lib/messaging";
 
 /**
@@ -350,13 +351,49 @@ export async function resumeSession(
     return;
   }
 
+  const outgoing = edges.filter((e) => e.source === currentNode.id);
+
+  // Someone who types instead of tapping has still answered, as long as the
+  // words they typed are the words on a button: "não consigo agora" is the
+  // same answer as pressing "Não consigo agora", and sending them down a
+  // generic branch for it is the bot telling them it was not listening.
+  //
+  // Anything else is a real message, and almost always a question. The right
+  // answer to a question is a person, so the automation stops here rather
+  // than picking a branch the person did not choose.
+  const typed = context.incomingMessage.text;
+  const resolution = resolveReply({
+    tappedPayload: tapped,
+    text: typed,
+    // nodeOptions reads the message bubbles off any node shape; the typed
+    // union here is narrower than it needs to be for a structural read.
+    options: nodeOptions(currentNode as unknown as Parameters<typeof nodeOptions>[0]).map((o) => ({
+      payload: o.payload!,
+      title: o.title,
+    })),
+    hasCatchAll: outgoing.some((e) => e.sourceHandle === "reply"),
+  });
+
+  if (resolution.kind === "human") {
+    await handOverToHuman(supabase, context, session.id, currentNode.id, typed ?? "");
+    return;
+  }
+
+  let answered = tapped;
+  // Answered in words rather than with a tap: credit the button and route
+  // through it exactly as a tap would.
+  if (resolution.kind === "follow" && resolution.handle && !tapped) {
+    answered = resolution.handle;
+    context.variables.payload = answered;
+    await recordButtonTap(supabase, nodes, edges, currentNode.id, context, answered);
+  }
+
   // Get next node after the current one. A Smart Delay with a timeout has two
   // outputs, so a reply must follow the "replied" one and never fall into the
   // "no reply" branch just because that edge was drawn first.
-  const outgoing = edges.filter((e) => e.source === currentNode.id);
   const nextEdge =
-    // The button that was tapped, when it has an exit of its own.
-    (tapped ? outgoing.find((e) => e.sourceHandle === tapped) : undefined) ??
+    // The button that was answered, when it has an exit of its own.
+    (answered ? outgoing.find((e) => e.sourceHandle === answered) : undefined) ??
     // Otherwise the catch-all: free text, or a button with no exit drawn.
     outgoing.find((e) => e.sourceHandle === "reply") ??
     outgoing.find((e) => e.sourceHandle !== "timeout");
@@ -1774,4 +1811,60 @@ async function recordButtonTap(
       title: owner?.title ?? null,
     } as unknown as Json,
   });
+}
+
+/**
+ * Stops the automation and leaves the conversation to a person.
+ *
+ * Someone who types a question at a decision point wants to talk to a human,
+ * and the worst thing the bot can do is guess a branch and keep talking. The
+ * session is closed rather than parked: a human answering mid-conversation
+ * should not be interrupted later by a scheduled follow-up.
+ */
+async function handOverToHuman(
+  supabase: SupabaseClient<Database>,
+  context: FlowExecutionContext,
+  sessionId: string,
+  nodeId: string,
+  text: string
+) {
+  // Any pending give-up job would poke the person while a human is replying.
+  await supabase
+    .from("scheduled_jobs")
+    .delete()
+    .eq("type", "smart_delay_timeout")
+    .eq("status", "pending")
+    .contains("payload", { sessionId });
+
+  await supabase
+    .from("conversations")
+    .update({ is_automation_paused: true })
+    .eq("id", context.conversationId);
+
+  await supabase
+    .from("flow_sessions")
+    .update({
+      human_takeover_at: new Date().toISOString(),
+      status: "completed",
+      waiting_for_input: false,
+      waiting_until: null,
+    })
+    .eq("id", sessionId);
+
+  await supabase.from("analytics_events").insert({
+    workspace_id: context.workspaceId,
+    flow_id: context.flowId,
+    contact_id: context.contactId,
+    event_type: "handed_to_human",
+    metadata: {
+      nodeId,
+      reason: "reply_matched_no_button",
+      // The question itself is what the person answering needs to see.
+      text: text.slice(0, 500),
+    } as unknown as Json,
+  });
+
+  console.info(
+    `[engine] handed conversation ${context.conversationId} to a human: free text at ${nodeId}`
+  );
 }
