@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { executeFlow } from "@/lib/flow-engine/engine";
 import { matchTrigger } from "@/lib/flow-engine/trigger-matcher";
+import { payloadRoutes } from "@/lib/flow-engine/node-stats";
 import { resolveWebhookSecret, verifyWebhookSignature } from "@/lib/zernio-webhook";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { processComment } from "@/lib/comment-processor";
@@ -351,6 +352,12 @@ async function processMessageEvent(
         // was answered with silence. The button still knows where it goes, so
         // the finished run is reopened and the engine follows it.
         //
+        // The run reopened has to be the one belonging to the button that was
+        // pressed, not merely the most recent one. Taking the newest finished
+        // run of any flow sent people into a different flow's branch, or, when
+        // that flow did not know the payload at all, handed the conversation
+        // to a human and took the contact out of every automation.
+        //
         // Only a run that finished on its own, and only inside the 24h window
         // we could reply in anyway. A cancelled run was cancelled on purpose
         // (a keyword restart), and reopening it would talk over the new one.
@@ -359,21 +366,46 @@ async function processMessageEvent(
           const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
           const { data: finished } = await supabase
             .from("flow_sessions")
-            .select("id, flow_id, current_node_id")
+            .select("id, flow_id")
             .eq("contact_id", contactId)
             .eq("channel_id", channel.id)
             .eq("status", "completed")
             .is("human_takeover_at", null)
             .gte("updated_at", dayAgo)
             .order("updated_at", { ascending: false })
-            .limit(1);
+            .limit(10);
 
-          const session = finished?.[0];
-          if (session) {
+          const candidates = finished ?? [];
+          let owning: { id: string; flow_id: string } | undefined;
+
+          if (candidates.length > 0) {
+            const { data: flows } = await supabase
+              .from("flows")
+              .select("id, nodes, edges")
+              .in("id", [...new Set(candidates.map((c) => c.flow_id))]);
+
+            const routesPayload = new Set(
+              (flows ?? [])
+                .filter(
+                  (f) =>
+                    payloadRoutes(
+                      (f.nodes ?? []) as unknown as Parameters<typeof payloadRoutes>[0],
+                      (f.edges ?? []) as unknown as Parameters<typeof payloadRoutes>[1],
+                      tapped
+                    ).length > 0
+                )
+                .map((f) => f.id)
+            );
+
+            // Newest first, so the most recent run of the owning flow wins.
+            owning = candidates.find((c) => routesPayload.has(c.flow_id));
+          }
+
+          if (owning) {
             const { data: live } = await supabase
               .from("flow_sessions")
               .update({ status: "active", waiting_for_input: true })
-              .eq("id", session.id)
+              .eq("id", owning.id)
               .eq("status", "completed")
               .select("id, flow_id")
               .single();

@@ -124,6 +124,7 @@ export function MessageThread({
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -145,6 +146,31 @@ export function MessageThread({
       setStatusUpdating(null);
     }
   }, [conversation, statusUpdating, router]);
+
+  /**
+   * Hands the conversation back to the automation.
+   *
+   * A flow pauses itself when someone asks a question it cannot answer, so a
+   * person can reply. Nothing used to switch it back on, which made every
+   * handover permanent: the contact stopped matching keywords and dropped out
+   * of every future flow with nothing on screen to explain it.
+   */
+  const resumeAutomation = useCallback(async () => {
+    if (!conversation || resuming) return;
+    setResuming(true);
+    try {
+      const { error } = await createClient()
+        .from("conversations")
+        .update({ is_automation_paused: false })
+        .eq("id", conversation.id);
+      if (error) throw error;
+      router.refresh();
+    } catch {
+      alert("Failed to resume the bot");
+    } finally {
+      setResuming(false);
+    }
+  }, [conversation, resuming, router]);
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -320,9 +346,18 @@ export function MessageThread({
             {conversation.status}
           </span>
           {conversation.is_automation_paused && (
-            <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700">
-              Bot paused
-            </span>
+            <button
+              type="button"
+              onClick={resumeAutomation}
+              disabled={resuming}
+              title="The bot stopped so you could answer. Click to hand this conversation back to it."
+              className="flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700 transition-colors hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-950 dark:text-orange-300 dark:hover:bg-orange-900"
+            >
+              {resuming ? (
+                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              ) : null}
+              Bot paused · resume
+            </button>
           )}
           <div className="flex items-center gap-1">
             {conversation.status !== "closed" && (

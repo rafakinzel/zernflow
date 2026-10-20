@@ -317,10 +317,23 @@ export async function resumeSession(
   if (replyText) {
     context.variables.message = replyText;
   }
+  // Two presses on one button is one answer, pressed twice: a slow reply
+  // invites a second press. This is checked before anything is written,
+  // because an early return after clearing the wait and deleting the give-up
+  // job left the run active, not waiting and with no job: no later reply
+  // could resume it and no rescue could fire, so the person was dropped
+  // mid-funnel in silence.
+  if (tapped && (await alreadyTapped(supabase, context, tapped, session.id))) {
+    console.info(`[engine] ignored a repeat tap on ${tapped}`);
+    return;
+  }
+
   // The payload is the stable handle for a tap; the label can be reworded.
   if (tapped) {
     context.variables.payload = tapped;
-    await recordButtonTap(supabase, nodes, edges, session.current_node_id, context, tapped);
+    await recordButtonTap(
+      supabase, nodes, edges, session.current_node_id, context, tapped, session.id
+    );
   }
 
   // The contact replied, so the Smart Delay give-up job must not fire later
@@ -386,7 +399,9 @@ export async function resumeSession(
   if (resolution.kind === "follow" && resolution.handle && !tapped) {
     answered = resolution.handle;
     context.variables.payload = answered;
-    await recordButtonTap(supabase, nodes, edges, currentNode.id, context, answered);
+    await recordButtonTap(
+      supabase, nodes, edges, currentNode.id, context, answered, session.id
+    );
   }
 
   // A button tapped after the flow has moved on, which is what happens when
@@ -405,14 +420,6 @@ export async function resumeSession(
     parkedOnDecision &&
     !outgoing.some((e) => e.sourceHandle === answered)
   ) {
-    // Two taps on the same button is one answer, pressed twice: a slow reply
-    // invites a second press. The tap that arrived was already recorded
-    // above, so an earlier one inside the window means this is the repeat.
-    if (await alreadyTapped(supabase, context, answered)) {
-      console.info(`[engine] ignored a repeat tap on ${answered}`);
-      return;
-    }
-
     const owner = await resolveOffNodeTap(supabase, nodes, edges, context, answered);
     if (!owner) {
       // A payload this flow does not route, usually a button from a version
@@ -1782,30 +1789,35 @@ function interpolateVariables(
 /**
  * Whether the platform will still accept a free-form message to this contact.
  *
- * Returns true when it cannot be proven otherwise: our record of inbound
- * messages can be incomplete, and refusing on missing data would invent a
- * failure. A refusal is written to analytics_events, so "how many rescues
- * died to the 24-hour window" is a number rather than a suspicion.
+ * Reads `contacts.last_interaction_at`, which is stamped only when the person
+ * themselves does something: sends a message or leaves a comment. Nothing we
+ * send moves it, which is what the window is measured from.
+ *
+ * It used to read the local `messages` table for the newest inbound row.
+ * Inbound messages are never written there (the provider is the source of
+ * truth), so that query always came back empty, the window always read as
+ * open, and the guard passed every time while appearing to work.
+ *
+ * Returns true when it cannot be proven otherwise: refusing on missing data
+ * would invent a failure. A refusal is written to analytics_events, so "how
+ * many rescues died to the 24-hour window" is a number rather than a
+ * suspicion.
  */
 async function withinMessagingWindow(
   supabase: SupabaseClient<Database>,
   context: FlowExecutionContext
 ): Promise<boolean> {
-  const { data: lastInbound } = await supabase
-    .from("messages")
-    .select("created_at")
-    .eq("conversation_id", context.conversationId)
-    .eq("direction", "inbound")
-    .order("created_at", { ascending: false })
-    .limit(1)
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("last_interaction_at")
+    .eq("id", context.contactId)
     .maybeSingle();
 
-  const state = messagingWindow(lastInbound?.created_at ?? null);
+  const lastAction = contact?.last_interaction_at ?? null;
+  const state = messagingWindow(lastAction);
   if (state.open) return true;
 
-  const silentFor = lastInbound?.created_at
-    ? hoursSince(lastInbound.created_at)
-    : null;
+  const silentFor = lastAction ? hoursSince(lastAction) : null;
 
   console.warn(
     `[engine] skipped a send: the 24h window closed (last inbound ${silentFor}h ago, conversation ${context.conversationId})`
@@ -1844,7 +1856,8 @@ async function recordButtonTap(
   edges: FlowEdge[],
   waitingAt: string | null,
   context: FlowExecutionContext,
-  payload: string
+  payload: string,
+  sessionId: string
 ): Promise<void> {
   const owner = findPayloadOwner(
     nodes as unknown as { id: string }[],
@@ -1859,6 +1872,10 @@ async function recordButtonTap(
     event_type: "button_tapped",
     metadata: {
       payload,
+      // Which run the tap belongs to. Without it a second run of the same
+      // flow cannot be told from a second press inside one run, and the
+      // repeat-press guard swallows the first tap of the new run.
+      sessionId,
       nodeId: owner?.nodeId ?? null,
       title: owner?.title ?? null,
     } as unknown as Json,
@@ -1980,7 +1997,8 @@ const REPEAT_TAP_MS = 2 * 60 * 1000;
 async function alreadyTapped(
   supabase: SupabaseClient<Database>,
   context: FlowExecutionContext,
-  payload: string
+  payload: string,
+  sessionId: string
 ): Promise<boolean> {
   const { data } = await supabase
     .from("analytics_events")
@@ -1988,9 +2006,12 @@ async function alreadyTapped(
     .eq("contact_id", context.contactId)
     .eq("flow_id", context.flowId)
     .eq("event_type", "button_tapped")
-    .contains("metadata", { payload })
-    .gte("created_at", new Date(Date.now() - REPEAT_TAP_MS).toISOString());
+    // Scoped to this run: someone who restarts the flow with a keyword and
+    // presses the same button again has answered, not repeated themselves.
+    .contains("metadata", { payload, sessionId })
+    .gte("created_at", new Date(Date.now() - REPEAT_TAP_MS).toISOString())
+    .limit(1);
 
-  // The tap being handled right now is already in this count.
-  return (data?.length ?? 0) > 1;
+  // Checked before this tap is recorded, so anything found is an earlier one.
+  return (data?.length ?? 0) > 0;
 }

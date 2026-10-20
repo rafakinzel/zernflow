@@ -35,7 +35,9 @@ export function FlowStatusToggle({
     try {
       const res = live
         ? await fetch(`/api/v1/flows/${flowId}`, {
-            method: "PATCH",
+            // PUT, not PATCH: the route has no PATCH handler, so this button
+            // answered 405 and the flow stayed live.
+            method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status: "draft" }),
           })

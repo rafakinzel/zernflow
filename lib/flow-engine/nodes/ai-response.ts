@@ -3,6 +3,7 @@ import type { Database } from "@/lib/types/database";
 import type { FlowExecutionContext, AiResponseNodeData } from "../types";
 import { createMessagingProvider } from "@/lib/messaging";
 import { generateText, createGateway } from "ai";
+import { decryptSecret } from "@/lib/secrets";
 
 // Halt the run: continuing would let a downstream Send Message deliver the
 // literal "{{ai_response}}" token to the contact (same pause mechanism as
@@ -99,7 +100,13 @@ export async function executeAiResponse(
 
   try {
     const model = data.model || "openai/gpt-4o-mini";
-    const aiGatewayKey = workspace.ai_api_key || process.env.AI_GATEWAY_API_KEY;
+    // Settings stores this encrypted, so it has to be decrypted here. Sent
+    // raw it is the "enc:v1:…" envelope, which the gateway rejects, and the
+    // envelope itself travels in an Authorization header. Being truthy, it
+    // also suppressed the environment-variable fallback.
+    const aiGatewayKey = workspace.ai_api_key
+      ? decryptSecret(workspace.ai_api_key)
+      : process.env.AI_GATEWAY_API_KEY;
     const gw = createGateway({ apiKey: aiGatewayKey || undefined });
     const result = await generateText({
       model: gw(model),
