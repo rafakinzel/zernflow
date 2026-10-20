@@ -19,7 +19,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { ActiveCampaignSection } from "@/components/settings/activecampaign-section";
 import { WorkspaceAvatar } from "@/components/settings/workspace-avatar";
 
@@ -120,31 +119,24 @@ export function SettingsView({
     setSaved(false);
 
     try {
-      const supabase = createClient();
+      // Through the server, because the browser cannot encrypt a credential.
+      // Writing straight to the table from here put the key in the column
+      // named `_encrypted` as plain text, and nothing complained.
+      const res = await fetch("/api/v1/workspace/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: workspace.id,
+          name: name.trim(),
+          globalKeywords: keywords,
+          apiKey: apiKey.trim() || undefined,
+          aiKey: aiKey.trim() || undefined,
+        }),
+      });
 
-      const update: Record<string, unknown> = {
-        name: name.trim(),
-        global_keywords: keywords,
-      };
-
-      // Only update keys if user entered new ones
-      if (apiKey.trim()) {
-        update.late_api_key_encrypted = apiKey.trim();
-      }
-      if (aiKey.trim()) {
-        update.ai_api_key = aiKey.trim();
-      }
-
-      const { error: updateError } = await supabase
-        .from("workspaces")
-        .update(update)
-        .eq("id", workspace.id)
-        .select("id")
-        .single();
-
-      if (updateError) {
-        console.error("Settings save error:", updateError);
-        throw new Error(updateError.message);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to save settings.");
       }
 
       setSaved(true);

@@ -16,14 +16,46 @@ import { isSupportedPlatform } from "@/lib/platforms";
  * Tests a Zernio API key, saves it to the workspace, and auto-syncs channels.
  */
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { apiKey, workspaceId } = body;
+  const supabase = await createClient();
+
+  // Signed in, and a member of the workspace being written to.
+  //
+  // This route used to take the workspace id from the request body with no
+  // check at all. Row-level security stopped the write from landing on
+  // someone else's workspace, but that left the only defence a database
+  // policy, and the route still let anyone unauthenticated use this server to
+  // find out whether a Zernio key is valid. The workspace now comes from the
+  // session, so the body cannot name one.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const { apiKey, workspaceId: requestedWorkspaceId } = body;
 
   if (!apiKey || typeof apiKey !== "string") {
     return NextResponse.json(
       { error: "apiKey is required" },
       { status: 400 }
     );
+  }
+
+  let workspaceId: string | null = null;
+  if (requestedWorkspaceId) {
+    const { data: membership } = await supabase
+      .from("workspace_members")
+      .select("workspace_id")
+      .eq("user_id", user.id)
+      .eq("workspace_id", requestedWorkspaceId)
+      .maybeSingle();
+
+    if (!membership) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    workspaceId = membership.workspace_id;
   }
 
   // Validate the key by listing accounts
@@ -40,8 +72,6 @@ export async function POST(request: NextRequest) {
 
   // If workspaceId provided, save the key and sync channels
   if (workspaceId) {
-    const supabase = await createClient();
-
     // Save the API key
     const { error: saveErr } = await supabase
       .from("workspaces")

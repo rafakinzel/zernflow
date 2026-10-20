@@ -175,8 +175,19 @@ async function handleWebhook(request: NextRequest) {
 
   // Verify HMAC-SHA256 signature against the workspace-level secret
   // (falls back to the legacy per-channel secret during transition).
+  // Fail closed. A workspace with no secret used to accept any unsigned
+  // payload, and this endpoint runs with the service role: an unsigned POST
+  // could create contacts and set flows running. Refusing is the safe side,
+  // and a workspace in that state gets its secret the next time its key is
+  // saved.
   const secret = await resolveWebhookSecret(supabase, channel);
-  if (secret && !verifyWebhookSignature(secret, body, signature)) {
+  if (!secret) {
+    console.error(
+      `[webhook] no signing secret for workspace ${channel.workspace_id}; refusing the delivery.`
+    );
+    return NextResponse.json({ error: "Webhook not configured" }, { status: 401 });
+  }
+  if (!verifyWebhookSignature(secret, body, signature)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
@@ -384,8 +395,15 @@ async function handleCommentWebhook(
     return NextResponse.json({ ok: true, skipped: true, reason: "own_comment" });
   }
 
+  // Fail closed, for the same reason as the message path above.
   const secret = await resolveWebhookSecret(supabase, channel);
-  if (secret && !verifyWebhookSignature(secret, rawBody, signature)) {
+  if (!secret) {
+    console.error(
+      `[webhook] no signing secret for workspace ${channel.workspace_id}; refusing the delivery.`
+    );
+    return NextResponse.json({ error: "Webhook not configured" }, { status: 401 });
+  }
+  if (!verifyWebhookSignature(secret, rawBody, signature)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
