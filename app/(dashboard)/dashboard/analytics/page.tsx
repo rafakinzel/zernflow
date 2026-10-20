@@ -1,5 +1,7 @@
 import { getWorkspace } from "@/lib/workspace";
 import { AnalyticsView } from "./analytics-view";
+import { InstagramInsightsBlock } from "@/components/analytics/instagram-insights-block";
+import { PostLeaderboardBlock } from "@/components/analytics/post-leaderboard-block";
 
 export default async function AnalyticsPage() {
   const { workspace, supabase } = await getWorkspace();
@@ -140,19 +142,30 @@ export default async function AnalyticsPage() {
   }
 
   return (
-    <AnalyticsView
-      workspaceId={workspace.id}
-      initialData={{
-        stats: {
-          totalFlows: flowsRes.count ?? 0,
-          totalContacts: contactsRes.count ?? 0,
-          messagesSent: sentRes.count ?? 0,
-          messagesFailed: failedRes.count ?? 0,
-        },
-        flowPerformance,
-        contactGrowth,
-        messageVolume,
-      }}
-    />
+    <>
+      {/* Both of these wait on Zernio, so they load themselves rather than
+          holding up the counts below, which come from our own database. The
+          order is deliberate: what the audience did, then what it produced,
+          then the flow and message detail. */}
+      <div className="space-y-4 px-6 pt-6">
+        <InstagramInsightsBlock />
+        <PostLeaderboardBlock />
+      </div>
+
+      <AnalyticsView
+        workspaceId={workspace.id}
+        initialData={{
+          stats: {
+            totalFlows: flowsRes.count ?? 0,
+            totalContacts: contactsRes.count ?? 0,
+            messagesSent: sentRes.count ?? 0,
+            messagesFailed: failedRes.count ?? 0,
+          },
+          flowPerformance,
+          contactGrowth,
+          messageVolume,
+        }}
+      />
+    </>
   );
 }
