@@ -131,7 +131,11 @@ export function SendMessageNode({ data, selected }: NodeProps) {
                 <div key={exit.key} className="relative">
                   <NodeExit
                     destination={exit}
-                    tone={exit.key === "next" ? "muted" : "default"}
+                    tone={
+                      exit.key === "next" || exit.key === "reply"
+                        ? "muted"
+                        : "default"
+                    }
                     trailing={
                       taps ? (
                         <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">

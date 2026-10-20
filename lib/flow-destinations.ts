@@ -265,6 +265,14 @@ export function nodeDestinations(
             ...named(edgeFrom(edges, node.id, button.payload)?.target),
           });
         }
+        // Free text matches no button. Without this exit the reply has
+        // nowhere to go and the conversation ends mid-sentence, so it is
+        // shown and connectable like any other.
+        exits.push({
+          key: "reply",
+          label: "Anything else",
+          ...named(edgeFrom(edges, node.id, "reply")?.target),
+        });
       } else if (buttons.length > 0) {
         for (const button of buttons) {
           const target = resolveButton(nodes, edges, node.id, button.payload);

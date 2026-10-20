@@ -198,12 +198,22 @@ export function simulateFlow(
 
     switch (node.type) {
       case "sendMessage": {
-        const messages = (data.messages as Array<{ type?: string; text?: string; imageUrl?: string }>) || [];
+        const messages =
+          (data.messages as Array<{
+            type?: string;
+            text?: string;
+            imageUrl?: string;
+            buttons?: Array<{ title: string }>;
+            quickReplies?: Array<{ title: string }>;
+          }>) || [];
         const texts = messages
           .filter((m) => m.text)
           .map((m) => interpolate(m.text!, variables));
-        const buttons = (data.buttons as Array<{ title: string }>) || [];
-        const quickReplies = (data.quickReplies as Array<{ title: string }>) || [];
+        // Options live on the bubble that carries them, not on the node.
+        // Reading them off the node showed a message with buttons as a
+        // message with none.
+        const buttons = messages.flatMap((m) => m.buttons ?? []);
+        const quickReplies = messages.flatMap((m) => m.quickReplies ?? []);
         steps.push({
           nodeId: node.id,
           nodeType: "sendMessage",
@@ -215,6 +225,10 @@ export function simulateFlow(
             quickReplies: quickReplies.length > 0 ? quickReplies : undefined,
           },
         });
+        // A message that waits on its own buttons stops here, exactly as the
+        // Smart Delay it replaced did. Walking on would pick whichever
+        // button happens to be wired first and call that the path.
+        if (data.waitForReply) shouldPause = true;
         break;
       }
 
