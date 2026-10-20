@@ -10,12 +10,17 @@ export default async function DashboardLayout({
 
   const { data: memberships } = await supabase
     .from("workspace_members")
-    .select("role, workspaces(id, name, slug)")
+    .select("role, workspaces(id, name, slug, avatar_url)")
     .eq("user_id", user.id);
 
   const workspaces = (memberships ?? [])
     .map((m) => ({
-      ...(m.workspaces as { id: string; name: string; slug: string }),
+      ...(m.workspaces as {
+        id: string;
+        name: string;
+        slug: string;
+        avatar_url: string | null;
+      }),
       role: m.role,
     }))
     .filter((w) => w.id);

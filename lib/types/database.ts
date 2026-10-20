@@ -73,6 +73,7 @@ export interface Database {
           id: string;
           name: string;
           slug: string;
+          avatar_url: string | null;
           late_api_key_encrypted: string | null;
           ai_api_key: string | null;
           ai_provider: string;
@@ -99,6 +100,7 @@ export interface Database {
           id?: string;
           name?: string;
           slug?: string;
+          avatar_url?: string | null;
           late_api_key_encrypted?: string | null;
           ai_api_key?: string | null;
           ai_provider?: string;

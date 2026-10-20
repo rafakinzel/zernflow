@@ -11,17 +11,31 @@ interface WorkspaceItem {
   name: string;
   slug: string;
   role: string;
+  avatar_url?: string | null;
 }
 
-function avatarUrl(seed: string, size = 28) {
+/**
+ * The generated picture, used only when a workspace has none of its own.
+ *
+ * Seeded by id rather than name so renaming a workspace does not silently
+ * hand it a different robot.
+ */
+function generatedAvatar(seed: string, size = 28) {
   return `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${encodeURIComponent(seed)}&size=${size}`;
+}
+
+function pictureFor(
+  workspace: { id: string; avatar_url?: string | null },
+  size = 28
+) {
+  return workspace.avatar_url || generatedAvatar(workspace.id, size);
 }
 
 export function WorkspaceSwitcher({
   current,
   workspaces,
 }: {
-  current: { id: string; name: string };
+  current: { id: string; name: string; avatar_url?: string | null };
   workspaces: WorkspaceItem[];
 }) {
   const router = useRouter();
@@ -83,9 +97,9 @@ export function WorkspaceSwitcher({
         className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-sidebar-accent transition-colors"
       >
         <img
-          src={avatarUrl(current.id)}
+          src={pictureFor(current)}
           alt=""
-          className="h-7 w-7 rounded-md"
+          className="h-7 w-7 rounded-md object-cover"
         />
         <span className="flex-1 truncate text-sm font-semibold text-sidebar-foreground">
           {current.name}
@@ -117,9 +131,9 @@ export function WorkspaceSwitcher({
                 )}
               >
                 <img
-                  src={avatarUrl(ws.id, 24)}
+                  src={pictureFor(ws, 24)}
                   alt=""
-                  className="h-6 w-6 rounded"
+                  className="h-6 w-6 rounded object-cover"
                 />
                 <span className="flex-1 truncate text-left">{ws.name}</span>
                 {isLoading ? (

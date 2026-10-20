@@ -21,10 +21,12 @@ import {
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { ActiveCampaignSection } from "@/components/settings/activecampaign-section";
+import { WorkspaceAvatar } from "@/components/settings/workspace-avatar";
 
 interface WorkspaceSettings {
   id: string;
   name: string;
+  avatarUrl: string | null;
   hasApiKey: boolean;
   hasAiKey: boolean;
   globalKeywords: string[];
@@ -176,6 +178,9 @@ export function SettingsView({
             <div className="flex items-center gap-2">
               <Settings className="h-4 w-4 text-muted-foreground" />
               <h2 className="text-sm font-semibold">General</h2>
+            </div>
+            <div className="mt-4">
+              <WorkspaceAvatar name={workspace.name} avatarUrl={workspace.avatarUrl} />
             </div>
             <div className="mt-4">
               <label className="text-xs font-medium text-muted-foreground">
