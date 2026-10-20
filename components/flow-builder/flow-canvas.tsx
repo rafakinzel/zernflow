@@ -698,7 +698,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
                 edges,
                 version: flow.version || 1,
                 exportedAt: new Date().toISOString(),
-                source: "zernflow",
+                source: "borrellichat",
               };
               const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
               const url = URL.createObjectURL(blob);

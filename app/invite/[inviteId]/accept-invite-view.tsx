@@ -61,7 +61,7 @@ export function AcceptInviteView({
         <div className="text-center">
           <Image
             src="/logo.png"
-            alt="ZernFlow"
+            alt="BorrelliChat"
             width={48}
             height={48}
             className="mx-auto mb-3"

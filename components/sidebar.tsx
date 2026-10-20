@@ -22,6 +22,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import type { Database } from "@/lib/types/database";
+import Image from "next/image";
 
 type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
 
@@ -81,6 +82,19 @@ export function Sidebar({
 
   return (
     <div className="flex h-full w-60 flex-col border-r border-border bg-sidebar">
+      <div className="flex items-center gap-2 px-3 pt-3">
+        <Image
+          src="/logo.png"
+          alt=""
+          width={24}
+          height={24}
+          className="shrink-0"
+          priority
+        />
+        <span className="text-sm font-semibold tracking-tight">
+          Borrelli<span className="text-emerald-600">Chat</span>
+        </span>
+      </div>
       <div className="border-b border-sidebar-border px-3 py-3">
         <WorkspaceSwitcher current={workspace} workspaces={workspaces} />
       </div>

@@ -6,25 +6,25 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: {
-    default: "ZernFlow - The Open Source ManyChat Alternative",
-    template: "%s | ZernFlow",
+    default: "BorrelliChat",
+    template: "%s | BorrelliChat",
   },
   description:
-    "Automate DMs, comments, and flows across Instagram, Facebook, WhatsApp, Telegram, X, Bluesky, and Reddit. Free, self-hostable, and open source.",
-  metadataBase: new URL("https://zernflow.com"),
+    "Automação de direct e comentários do Instagram para o Thiago Borrelli.",
+  metadataBase: new URL("https://bot.thiagoborrelli.com"),
   openGraph: {
-    title: "ZernFlow - The Open Source ManyChat Alternative",
+    title: "BorrelliChat",
     description:
-      "Automate DMs, comments, and flows across Instagram, Facebook, WhatsApp, Telegram, X, Bluesky, and Reddit. Free, self-hostable, and open source.",
-    url: "https://zernflow.com",
-    siteName: "ZernFlow",
+      "Automação de direct e comentários do Instagram para o Thiago Borrelli.",
+    url: "https://bot.thiagoborrelli.com",
+    siteName: "BorrelliChat",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ZernFlow - The Open Source ManyChat Alternative",
+    title: "BorrelliChat",
     description:
-      "Automate DMs, comments, and flows across 7 platforms. Free, self-hostable, open source.",
+      "Automação de direct e comentários do Instagram."
   },
   icons: {
     icon: [

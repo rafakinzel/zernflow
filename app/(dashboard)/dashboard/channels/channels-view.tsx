@@ -138,7 +138,7 @@ export function ChannelsView({
         setSyncMessage(`Could not save some channels: ${failed.join("; ")}`);
       } else if (nothingChanged && syncedChannels.length === 0 && skipped.length > 0) {
         setSyncMessage(
-          `Nothing to connect: ZernFlow does not support ${skipped.join(", ")}`
+          `Nothing to connect: BorrelliChat does not support ${skipped.join(", ")}`
         );
       } else if (nothingChanged) {
         setSyncMessage("All channels up to date");
@@ -454,7 +454,7 @@ export function ChannelsView({
           channelToDelete?.display_name ??
           channelToDelete?.username ??
           (channelToDelete ? platformLabel(channelToDelete.platform) : "this channel")
-        } from Zernio and permanently deletes its conversations, contact links, and stats in Zernflow. This cannot be undone.`}
+        } from Zernio and permanently deletes its conversations, contact links, and stats in BorrelliChat. This cannot be undone.`}
         confirmLabel="Delete"
         destructive
         onConfirm={handleDelete}

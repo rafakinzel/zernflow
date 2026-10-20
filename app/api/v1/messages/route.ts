@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
       message: { text },
     });
 
-    // Update conversation's last message info (ZernFlow-specific metadata)
+    // Update conversation's last message info (app-specific metadata)
     await supabase
       .from("conversations")
       .update({

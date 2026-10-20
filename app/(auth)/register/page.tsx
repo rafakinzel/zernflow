@@ -52,10 +52,10 @@ export default function RegisterPage() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
-          <Image src="/logo.png" alt="ZernFlow" width={48} height={48} className="mx-auto mb-3" />
+          <Image src="/logo.png" alt="BorrelliChat" width={48} height={48} className="mx-auto mb-3" />
           <h1 className="text-2xl font-bold">Create your account</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Get started with ZernFlow
+            Get started with BorrelliChat
           </p>
         </div>
 

@@ -9,6 +9,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/dashboard/", "/api/", "/invite/"],
       },
     ],
-    sitemap: "https://zernflow.com/sitemap.xml",
+    sitemap: "https://bot.thiagoborrelli.com/sitemap.xml",
   };
 }

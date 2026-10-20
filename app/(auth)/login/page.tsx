@@ -47,7 +47,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
-          <Image src="/logo.png" alt="ZernFlow" width={48} height={48} className="mx-auto mb-3" />
+          <Image src="/logo.png" alt="BorrelliChat" width={48} height={48} className="mx-auto mb-3" />
           <h1 className="text-2xl font-bold">Welcome back</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Sign in to your account
