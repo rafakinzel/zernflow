@@ -4,6 +4,8 @@ import {
   encryptSecret,
   encryptionAvailable,
   isEncrypted,
+  needsReencryption,
+  rotationInProgress,
 } from "./secrets";
 
 const KEY = Buffer.alloc(32, 7).toString("base64");
@@ -71,5 +73,85 @@ describe("a key of the wrong size", () => {
     process.env.ENCRYPTION_KEY = Buffer.alloc(8, 1).toString("base64");
     expect(encryptSecret("ac-token")).toBe("ac-token");
     expect(encryptionAvailable()).toBe(false);
+  });
+});
+
+describe("rotating a key", () => {
+  const OLD = Buffer.alloc(32, 1).toString("base64");
+  const NEW = Buffer.alloc(32, 2).toString("base64");
+  const previously = process.env.ENCRYPTION_KEY_PREVIOUS;
+
+  afterEach(() => {
+    if (previously === undefined) delete process.env.ENCRYPTION_KEY_PREVIOUS;
+    else process.env.ENCRYPTION_KEY_PREVIOUS = previously;
+  });
+
+  /** Seals a value with whichever key is current, then swaps in the new one. */
+  function sealedUnderOldKey(secret: string) {
+    process.env.ENCRYPTION_KEY = OLD;
+    const stored = encryptSecret(secret);
+    process.env.ENCRYPTION_KEY = NEW;
+    process.env.ENCRYPTION_KEY_PREVIOUS = OLD;
+    return stored;
+  }
+
+  // The whole point: swapping the key must not take the stored credentials
+  // down with it, or a rotation means the bot stops sending until every
+  // vendor key is typed in again by hand.
+  it("still reads a credential sealed with the outgoing key", () => {
+    const stored = sealedUnderOldKey("zernio-key-xyz");
+    expect(decryptSecret(stored)).toBe("zernio-key-xyz");
+  });
+
+  it("writes new values under the new key only", () => {
+    sealedUnderOldKey("anything");
+    const fresh = encryptSecret("written-after-the-swap");
+
+    delete process.env.ENCRYPTION_KEY_PREVIOUS;
+    expect(decryptSecret(fresh)).toBe("written-after-the-swap");
+  });
+
+  it("knows which stored values are still on the old key", () => {
+    const old = sealedUnderOldKey("old-one");
+    const fresh = encryptSecret("new-one");
+
+    expect(needsReencryption(old)).toBe(true);
+    expect(needsReencryption(fresh)).toBe(false);
+  });
+
+  it("reports whether a rotation is under way", () => {
+    sealedUnderOldKey("anything");
+    expect(rotationInProgress()).toBe(true);
+
+    delete process.env.ENCRYPTION_KEY_PREVIOUS;
+    expect(rotationInProgress()).toBe(false);
+  });
+
+  // Re-encrypting is what lets the old key be deleted afterwards. Once it is
+  // done the outgoing key is no longer needed to read anything.
+  it("survives dropping the old key once everything is re-encrypted", () => {
+    const stored = sealedUnderOldKey("needs-rewriting");
+    const rewritten = encryptSecret(decryptSecret(stored));
+
+    delete process.env.ENCRYPTION_KEY_PREVIOUS;
+    expect(decryptSecret(rewritten)).toBe("needs-rewriting");
+    expect(needsReencryption(rewritten)).toBe(false);
+  });
+
+  it("refuses a value neither key opens, rather than returning rubbish", () => {
+    process.env.ENCRYPTION_KEY = OLD;
+    const stored = encryptSecret("sealed-with-a-third-key");
+
+    process.env.ENCRYPTION_KEY = NEW;
+    process.env.ENCRYPTION_KEY_PREVIOUS = Buffer.alloc(32, 9).toString("base64");
+
+    expect(() => decryptSecret(stored)).toThrow();
+    // Still flagged as pending, so the report shows it instead of hiding it.
+    expect(needsReencryption(stored)).toBe(true);
+  });
+
+  it("treats a plaintext value as pending once a key exists", () => {
+    process.env.ENCRYPTION_KEY = NEW;
+    expect(needsReencryption("plain-old-token")).toBe(true);
   });
 });
