@@ -46,7 +46,19 @@ export interface ProviderConversation {
   id?: string;
   participantId?: string;
   participantName?: string;
+  participantUsername?: string | null;
   participantPicture?: string | null;
+  /**
+   * Instagram's own facts about the participant. Only Instagram conversations
+   * carry it, and the provider leaves it out when the platform sent nothing.
+   */
+  instagramProfile?: {
+    isFollower?: boolean | null;
+    isFollowing?: boolean | null;
+    followerCount?: number | null;
+    isVerified?: boolean | null;
+    fetchedAt?: string | null;
+  } | null;
   lastMessage?: string;
   updatedTime?: string;
   status?: "active" | "archived";

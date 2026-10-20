@@ -20,13 +20,34 @@ function makeFakeSupabase(seed: {
   /** Contact ids that already have a conversations row on the channel, so the
    * ignoreDuplicates upsert conflicts and returns no inserted rows. */
   conversationContactIds?: string[];
+  /** Existing contact rows, keyed by id, for the refresh path to read back. */
+  contactsById?: Record<string, Record<string, unknown>>;
+  /** platform_username already stored on the contact_channels row. */
+  usernameBySender?: Record<string, string | null>;
 }) {
   const inserts: CapturedRow[] = [];
   const upserts: CapturedRow[] = [];
   const updates: CapturedRow[] = [];
   let contactSeq = 0;
 
+  const uploads: { bucket: string; path: string; bytes: number }[] = [];
+
   const client = {
+    storage: {
+      from(bucket: string) {
+        return {
+          upload(path: string, body: Uint8Array) {
+            uploads.push({ bucket, path, bytes: body.byteLength });
+            return Promise.resolve({ error: null });
+          },
+          getPublicUrl(path: string) {
+            return {
+              data: { publicUrl: `https://cdn.test/${bucket}/${path}` },
+            };
+          },
+        };
+      },
+    },
     from(table: string) {
       const filters: Record<string, unknown> = {};
       const builder = {
@@ -39,12 +60,21 @@ function makeFakeSupabase(seed: {
         },
         single() {
           if (table === "contact_channels") {
-            const contactId =
-              seed.contactChannelBySender?.[filters.platform_sender_id as string];
+            const sender = filters.platform_sender_id as string;
+            const contactId = seed.contactChannelBySender?.[sender];
             return Promise.resolve({
-              data: contactId ? { contact_id: contactId } : null,
+              data: contactId
+                ? {
+                    contact_id: contactId,
+                    platform_username: seed.usernameBySender?.[sender] ?? null,
+                  }
+                : null,
               error: contactId ? null : { code: "PGRST116" },
             });
+          }
+          if (table === "contacts") {
+            const row = seed.contactsById?.[filters.id as string];
+            return Promise.resolve({ data: row ?? null, error: null });
           }
           return Promise.resolve({ data: null, error: null });
         },
@@ -75,12 +105,27 @@ function makeFakeSupabase(seed: {
           return Promise.resolve({ data: null, error: null });
         },
         update(patch: Record<string, unknown>) {
-          return {
-            eq() {
-              updates.push({ table, row: patch });
-              return Promise.resolve({ data: null, error: null });
+          // Chainable and awaitable: callers use one .eq() or two, and await
+          // whichever comes last.
+          const target: Record<string, unknown> = {};
+          const captured = { table, row: patch, options: target };
+          updates.push(captured);
+          const chain = {
+            eq(col: string, val: unknown) {
+              target[col] = val;
+              return chain;
+            },
+            then(
+              resolve: (v: { data: null; error: null }) => unknown,
+              reject?: (reason: unknown) => unknown
+            ) {
+              return Promise.resolve({ data: null, error: null }).then(
+                resolve,
+                reject
+              );
             },
           };
+          return chain;
         },
         upsert(row: Record<string, unknown>, options?: Record<string, unknown>) {
           upserts.push({ table, row, options });
@@ -100,7 +145,13 @@ function makeFakeSupabase(seed: {
     },
   };
 
-  return { client: client as unknown as SupabaseClient, inserts, upserts, updates };
+  return {
+    client: client as unknown as SupabaseClient,
+    inserts,
+    upserts,
+    updates,
+    uploads,
+  };
 }
 
 interface FakePage {
@@ -390,5 +441,176 @@ describe("backfillInboxConversations", () => {
 
     expect(res.imported).toBe(1);
     expect(fake.upserts[0].row).toMatchObject({ channel_id: "ch-1" });
+  });
+});
+
+// ── Topping up contacts the platform knows more about than we do ────────────
+
+/** A one-pixel JPEG's worth of bytes; only the headers and size matter here. */
+function fakeImageFetch(contentType = "image/jpeg", bytes = 2048) {
+  return vi.fn(async () =>
+    new Response(new Uint8Array(bytes), { headers: { "content-type": contentType } })
+  );
+}
+
+const richConv = (id: string, extra: Record<string, unknown> = {}) =>
+  conv(id, {
+    participantPicture: "https://scontent.cdninstagram.com/pic.jpg",
+    participantUsername: "magdahino",
+    instagramProfile: { followerCount: 1240, isVerified: false, isFollower: true },
+    ...extra,
+  });
+
+describe("refreshing a contact that already exists", () => {
+  it("fills in the picture, the @ and the profile facts it was missing", async () => {
+    vi.stubGlobal("fetch", fakeImageFetch());
+
+    const fake = makeFakeSupabase({
+      existingConversationIds: ["c1"],
+      contactChannelBySender: { "sender-c1": "contact-9" },
+      usernameBySender: { "sender-c1": null },
+      contactsById: {
+        "contact-9": {
+          // The sender id standing in for a name, which is what the platform
+          // leaves behind when it sends no name at all.
+          display_name: "sender-c1",
+          avatar_url: null,
+          metadata: null,
+        },
+      },
+    });
+
+    const res = await backfillInboxConversations({
+      supabase: fake.client,
+      messaging: fakeZernio([{ data: [richConv("c1")], pagination: { hasMore: false } }])
+        .client,
+      workspaceId: "ws-1",
+      channels: [channel],
+    });
+
+    // Nothing new to import: the conversation was already here.
+    expect(res.imported).toBe(0);
+
+    expect(fake.updates).toContainEqual(
+      expect.objectContaining({
+        table: "contact_channels",
+        row: { platform_username: "magdahino" },
+      })
+    );
+
+    expect(fake.uploads).toHaveLength(1);
+    expect(fake.uploads[0].bucket).toBe("contact-avatars");
+
+    const contactUpdate = fake.updates.find(
+      (u) => u.table === "contacts" && "avatar_url" in u.row
+    );
+    expect(contactUpdate?.row).toMatchObject({
+      display_name: "Sender c1",
+      avatar_url: expect.stringContaining("/contact-avatars/contact-9/"),
+      metadata: {
+        instagram: { followerCount: 1240, isVerified: false, isFollower: true },
+      },
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it("leaves a display name alone once it is a real name", async () => {
+    vi.stubGlobal("fetch", fakeImageFetch());
+
+    const fake = makeFakeSupabase({
+      existingConversationIds: ["c1"],
+      contactChannelBySender: { "sender-c1": "contact-9" },
+      contactsById: {
+        "contact-9": {
+          display_name: "Magda Hino",
+          avatar_url: null,
+          metadata: null,
+        },
+      },
+    });
+
+    await backfillInboxConversations({
+      supabase: fake.client,
+      messaging: fakeZernio([{ data: [richConv("c1")], pagination: { hasMore: false } }])
+        .client,
+      workspaceId: "ws-1",
+      channels: [channel],
+    });
+
+    const contactUpdate = fake.updates.find(
+      (u) => u.table === "contacts" && "avatar_url" in u.row
+    );
+    expect(contactUpdate?.row).not.toHaveProperty("display_name");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("does not download a picture it already has a copy of", async () => {
+    const fetchSpy = fakeImageFetch();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const fake = makeFakeSupabase({
+      existingConversationIds: ["c1"],
+      contactChannelBySender: { "sender-c1": "contact-9" },
+      usernameBySender: { "sender-c1": "magdahino" },
+      contactsById: {
+        "contact-9": {
+          display_name: "Magda Hino",
+          avatar_url: "https://cdn.test/contact-avatars/contact-9/111.jpg",
+          metadata: { instagram: { followerCount: 1240 } },
+        },
+      },
+    });
+
+    await backfillInboxConversations({
+      supabase: fake.client,
+      messaging: fakeZernio([{ data: [richConv("c1")], pagination: { hasMore: false } }])
+        .client,
+      workspaceId: "ws-1",
+      channels: [channel],
+    });
+
+    // The platform's link changes on every sync. Re-fetching the same face
+    // because the query string moved would cost a request per contact, forever.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fake.uploads).toHaveLength(0);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps the platform link when the copy cannot be made", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("nope", { status: 404 }))
+    );
+
+    const fake = makeFakeSupabase({
+      existingConversationIds: ["c1"],
+      contactChannelBySender: { "sender-c1": "contact-9" },
+      contactsById: {
+        "contact-9": { display_name: "Magda Hino", avatar_url: null, metadata: null },
+      },
+    });
+
+    await backfillInboxConversations({
+      supabase: fake.client,
+      messaging: fakeZernio([{ data: [richConv("c1")], pagination: { hasMore: false } }])
+        .client,
+      workspaceId: "ws-1",
+      channels: [channel],
+    });
+
+    const contactUpdate = fake.updates.find(
+      (u) => u.table === "contacts" && "avatar_url" in u.row
+    );
+    // Expiring is better than absent: it renders until the link dies, and the
+    // next sync tries the copy again.
+    expect(contactUpdate?.row.avatar_url).toBe(
+      "https://scontent.cdninstagram.com/pic.jpg"
+    );
+    expect(fake.uploads).toHaveLength(0);
+
+    vi.unstubAllGlobals();
   });
 });

@@ -31,6 +31,34 @@ interface ContactDetails {
   }[];
 }
 
+/** What Instagram told us about this person, when it told us anything. */
+interface InstagramFacts {
+  followerCount?: number | null;
+  isVerified?: boolean | null;
+  isFollower?: boolean | null;
+  isFollowing?: boolean | null;
+}
+
+function instagramFacts(metadata: unknown): InstagramFacts | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const block = (metadata as Record<string, unknown>).instagram;
+  if (!block || typeof block !== "object") return null;
+  const facts = block as InstagramFacts;
+  const hasAny =
+    facts.followerCount != null ||
+    facts.isVerified != null ||
+    facts.isFollower != null ||
+    facts.isFollowing != null;
+  return hasAny ? facts : null;
+}
+
+/** 1200 reads faster than 1,200 in a chip this size; 12.4k faster still. */
+function compactCount(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "Never";
   return new Date(dateStr).toLocaleDateString([], {
@@ -163,6 +191,29 @@ export function ContactPanel({
             >
               {details.contact.is_subscribed ? "Subscribed" : "Unsubscribed"}
             </span>
+
+            {(() => {
+              const facts = instagramFacts(details.contact.metadata);
+              if (!facts) return null;
+              const chips: string[] = [];
+              if (facts.followerCount != null)
+                chips.push(`${compactCount(facts.followerCount)} followers`);
+              if (facts.isFollower) chips.push("Follows you");
+              if (facts.isVerified) chips.push("Verified");
+              if (chips.length === 0) return null;
+              return (
+                <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                  {chips.map((chip) => (
+                    <span
+                      key={chip}
+                      className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
+                    >
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Details */}
