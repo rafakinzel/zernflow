@@ -28,6 +28,10 @@ export interface SendMessageNodeProps {
     buttons?: Array<{ title: string; type: string; payload?: string; url?: string }>;
   }>;
   postActions?: Array<{ actionType?: string }>;
+  /** The node holds the wait, so each button can own its exit. */
+  waitForReply?: boolean;
+  timeout?: number;
+  timeoutUnit?: string;
   /** Attached by the canvas for display only; never saved on the flow. */
   stats?: NodeStat;
   exits?: Destination[];
@@ -59,6 +63,14 @@ export function SendMessageNode({ data, selected }: NodeProps) {
   const buttonStats = stats?.buttons ?? [];
   const exits = nodeData.exits ?? [];
   const tapsByPayload = new Map(buttonStats.map((b) => [b.payload, b]));
+  // When the node waits on its own buttons, every button is a way out and
+  // gets a connector beside it, which is what lets the canvas draw a line
+  // from the button rather than from the card.
+  const waits = Boolean(nodeData.waitForReply);
+  const waitLabel =
+    nodeData.timeout && nodeData.timeoutUnit
+      ? `No reply in ${nodeData.timeout}${nodeData.timeoutUnit === "hours" ? "h" : nodeData.timeoutUnit === "minutes" ? "min" : nodeData.timeoutUnit[0]}`
+      : "No reply";
 
   const actionLabels = (nodeData.postActions ?? [])
     .map((a) => (a.actionType ? POST_ACTION_LABELS[a.actionType] ?? a.actionType : null))
@@ -116,19 +128,31 @@ export function SendMessageNode({ data, selected }: NodeProps) {
             {exits.map((exit) => {
               const taps = tapsByPayload.get(exit.key);
               return (
-                <NodeExit
-                  key={exit.key}
-                  destination={exit}
-                  tone={exit.key === "next" ? "muted" : "default"}
-                  trailing={
-                    taps ? (
-                      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                        {taps.taps}
-                        {taps.rate !== null && ` · ${Math.round(taps.rate * 100)}%`}
-                      </span>
-                    ) : undefined
-                  }
-                />
+                <div key={exit.key} className="relative">
+                  <NodeExit
+                    destination={exit}
+                    tone={exit.key === "next" ? "muted" : "default"}
+                    trailing={
+                      taps ? (
+                        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                          {taps.taps}
+                          {taps.rate !== null && ` · ${Math.round(taps.rate * 100)}%`}
+                        </span>
+                      ) : undefined
+                    }
+                  />
+                  {waits && exit.key !== "next" && exit.key !== "timeout" && (
+                    <Handle
+                      type="source"
+                      position={SOURCE_POSITION}
+                      id={exit.key}
+                      // Pinned to this row rather than spread along the card,
+                      // so the line leaves the button it belongs to.
+                      style={{ top: "50%", right: -18, transform: "translateY(-50%)" }}
+                      className="!h-3 !w-3 !border-2 !border-blue-500 !bg-white"
+                    />
+                  )}
+                </div>
               );
             })}
           </div>
@@ -168,6 +192,23 @@ export function SendMessageNode({ data, selected }: NodeProps) {
           </div>
         )}
 
+        {waits && (
+          <div className="relative mt-2 border-t border-border pt-2">
+            <div className="flex items-center gap-1.5">
+              <span className="min-w-0 flex-1 truncate rounded-full border border-amber-200 px-1.5 py-0.5 text-[10px] text-amber-700 dark:border-amber-900 dark:text-amber-500">
+                {waitLabel}
+              </span>
+            </div>
+            <Handle
+              type="source"
+              position={SOURCE_POSITION}
+              id="timeout"
+              style={{ top: "calc(50% + 4px)", right: -18, transform: "translateY(-50%)" }}
+              className="!h-3 !w-3 !border-2 !border-amber-500 !bg-white"
+            />
+          </div>
+        )}
+
         {/* Attached side effects, so the canvas still says what the step does
             even though these no longer have cards of their own. */}
         {actionLabels.length > 0 && (
@@ -184,11 +225,13 @@ export function SendMessageNode({ data, selected }: NodeProps) {
           </div>
         )}
       </div>
-      <Handle
-        type="source"
-        position={SOURCE_POSITION}
-        className="!h-3 !w-3 !border-2 !border-blue-500 !bg-white"
-      />
+      {!waits && (
+        <Handle
+          type="source"
+          position={SOURCE_POSITION}
+          className="!h-3 !w-3 !border-2 !border-blue-500 !bg-white"
+        />
+      )}
     </div>
   );
 }

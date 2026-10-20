@@ -253,7 +253,19 @@ export function nodeDestinations(
       });
     } else {
       const buttons = options(node);
-      if (buttons.length > 0) {
+      const waits = Boolean(node.data?.waitForReply);
+
+      if (buttons.length > 0 && waits) {
+        // The node holds the wait, so each button has a real edge of its own
+        // and there is nothing to walk: read the graph.
+        for (const button of buttons) {
+          exits.push({
+            key: button.payload,
+            label: button.title,
+            ...named(edgeFrom(edges, node.id, button.payload)?.target),
+          });
+        }
+      } else if (buttons.length > 0) {
         for (const button of buttons) {
           const target = resolveButton(nodes, edges, node.id, button.payload);
           exits.push({

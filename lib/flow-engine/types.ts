@@ -58,6 +58,18 @@ export type PostAction =
   | ({ actionType: "activeCampaign" } & ActiveCampaignNodeData);
 
 export interface SendMessageNodeData {
+  /**
+   * Pause here and route by whichever button the person taps.
+   *
+   * The old shape put the wait in a Smart Delay and the choice in a
+   * condition downstream, which meant a button pointed at nothing and the
+   * canvas could not draw a line from it. With the wait on the message, each
+   * button is an exit of its own.
+   */
+  waitForReply?: boolean;
+  /** How long to wait before taking the "no reply" exit. */
+  timeout?: number;
+  timeoutUnit?: string;
   messages: Array<{
     text?: string;
     imageUrl?: string;

@@ -355,6 +355,9 @@ export async function resumeSession(
   // "no reply" branch just because that edge was drawn first.
   const outgoing = edges.filter((e) => e.source === currentNode.id);
   const nextEdge =
+    // The button that was tapped, when it has an exit of its own.
+    (tapped ? outgoing.find((e) => e.sourceHandle === tapped) : undefined) ??
+    // Otherwise the catch-all: free text, or a button with no exit drawn.
     outgoing.find((e) => e.sourceHandle === "reply") ??
     outgoing.find((e) => e.sourceHandle !== "timeout");
   if (!nextEdge) {
@@ -539,7 +542,11 @@ async function executeNode(
 
   // A paused node has not finished its step yet: a Smart Delay waiting on a
   // reply would otherwise fire its side effects now and again on resume.
-  if (result !== "pause") {
+  //
+  // A message that waits on its own buttons is the exception. It has already
+  // sent, and the session never comes back to it, so skipping here would
+  // drop its side effects for good.
+  if (result !== "pause" || resolveNodeType(node) === "sendMessage") {
     await runPostActions(supabase, node, context);
   }
 
@@ -555,8 +562,16 @@ async function executePrimary(
   const nodeType = resolveNodeType(node);
 
   switch (nodeType) {
-    case "sendMessage":
-      return executeSendMessage(supabase, node.data as SendMessageNodeData, context);
+    case "sendMessage": {
+      const data = node.data as SendMessageNodeData;
+      await executeSendMessage(supabase, data, context);
+      // The buttons were just put on screen, so this is where the waiting
+      // belongs. Routing on resume reads the payload against this node.
+      if (data.waitForReply) {
+        return pauseForReply(supabase, data, sessionId, node.id, context);
+      }
+      return;
+    }
     case "condition":
       return executeCondition(supabase, node.data as ConditionNodeData, context);
     case "delay":
@@ -1261,13 +1276,30 @@ async function executeSmartDelay(
   nodeId: string,
   context: FlowExecutionContext
 ): Promise<string> {
+  return pauseForReply(supabase, data, sessionId, nodeId, context);
+}
+
+/**
+ * Parks the session until the contact replies, or until the wait runs out.
+ *
+ * Shared by the Smart Delay and by a message node that waits on its own
+ * buttons, because they are the same act: the only difference is which node
+ * id the session comes back to.
+ */
+async function pauseForReply(
+  supabase: SupabaseClient<Database>,
+  data: { timeout?: number; timeoutUnit?: string } | null | undefined,
+  sessionId: string,
+  nodeId: string,
+  context: FlowExecutionContext
+): Promise<string> {
   const multipliers: Record<string, number> = {
     minutes: 60 * 1000,
     hours: 60 * 60 * 1000,
     days: 24 * 60 * 60 * 1000,
   };
   const timeoutMs = data?.timeout
-    ? data.timeout * (multipliers[data.timeoutUnit] || 60 * 1000)
+    ? data.timeout * (multipliers[data.timeoutUnit ?? ""] || 60 * 1000)
     : 0;
   const waitingUntil =
     timeoutMs > 0 ? new Date(Date.now() + timeoutMs).toISOString() : null;
