@@ -9,6 +9,8 @@ import {
 } from "@/lib/flow-orientation";
 import { GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { Destination } from "@/lib/flow-destinations";
+import { NodeExit } from "./node-exit";
 
 export interface ConditionNodeProps {
   label?: string;
@@ -18,6 +20,8 @@ export interface ConditionNodeProps {
     value: string;
   }>;
   logic?: "and" | "or";
+  /** Attached by the canvas for display only; never saved on the flow. */
+  exits?: Destination[];
 }
 
 const operatorLabels: Record<string, string> = {
@@ -34,6 +38,7 @@ export function ConditionNode({ data, selected }: NodeProps) {
   const label = nodeData.label || "Condition";
   const conditions = nodeData.conditions || [];
   const logic = nodeData.logic || "and";
+  const exits = nodeData.exits ?? [];
 
   return (
     <div
@@ -73,6 +78,14 @@ export function ConditionNode({ data, selected }: NodeProps) {
           </div>
         ) : (
           <p className="mt-1 text-xs text-muted-foreground italic">No conditions set</p>
+        )}
+
+        {exits.length > 0 && (
+          <div className="mt-2 space-y-1.5 border-t border-border pt-2">
+            {exits.map((exit) => (
+              <NodeExit key={exit.key} destination={exit} tone="muted" />
+            ))}
+          </div>
         )}
       </div>
       <div className={BRANCH_LABELS_CLASS}>

@@ -25,6 +25,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { layoutFlow } from "@/lib/flow-layout";
 import type { NodeStat } from "@/lib/flow-engine/node-stats";
+import { nodeDestinations } from "@/lib/flow-destinations";
 import type { Database, FlowStatus, Json } from "@/lib/types/database";
 
 import { NodePalette } from "./node-palette";
@@ -219,13 +220,22 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
    * flow definition on the next autosave.
    */
   const nodesWithStats = useMemo(() => {
-    if (!nodeStats) return nodes;
-    return nodes.map((node) =>
-      nodeStats[node.id]
-        ? { ...node, data: { ...node.data, stats: nodeStats[node.id] } }
-        : node
+    // Derived from the graph as it stands, so an edge dragged a second ago
+    // is already reflected. Recomputing beats storing it and going stale.
+    const destinations = nodeDestinations(
+      nodes as unknown as Parameters<typeof nodeDestinations>[0],
+      edges as unknown as Parameters<typeof nodeDestinations>[1]
     );
-  }, [nodes, nodeStats]);
+
+    return nodes.map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        exits: destinations[node.id] ?? [],
+        ...(nodeStats?.[node.id] ? { stats: nodeStats[node.id] } : {}),
+      },
+    }));
+  }, [nodes, edges, nodeStats]);
 
   /**
    * Edge labels are derived rather than stored, so a handle renamed in code

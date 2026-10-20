@@ -7,6 +7,8 @@ import {
 } from "@/lib/flow-orientation";
 import { Clock, MessageSquare, Users, Zap } from "lucide-react";
 import type { NodeStat } from "@/lib/flow-engine/node-stats";
+import type { Destination } from "@/lib/flow-destinations";
+import { NodeExit } from "./node-exit";
 import { cn } from "@/lib/utils";
 
 const POST_ACTION_LABELS: Record<string, string> = {
@@ -28,6 +30,7 @@ export interface SendMessageNodeProps {
   postActions?: Array<{ actionType?: string }>;
   /** Attached by the canvas for display only; never saved on the flow. */
   stats?: NodeStat;
+  exits?: Destination[];
 }
 
 export function SendMessageNode({ data, selected }: NodeProps) {
@@ -54,6 +57,8 @@ export function SendMessageNode({ data, selected }: NodeProps) {
   // reading a node-level count cannot give: not how many got here, but which
   // of the options they took and which one nobody takes.
   const buttonStats = stats?.buttons ?? [];
+  const exits = nodeData.exits ?? [];
+  const tapsByPayload = new Map(buttonStats.map((b) => [b.payload, b]));
 
   const actionLabels = (nodeData.postActions ?? [])
     .map((a) => (a.actionType ? POST_ACTION_LABELS[a.actionType] ?? a.actionType : null))
@@ -106,22 +111,26 @@ export function SendMessageNode({ data, selected }: NodeProps) {
 
         {/* Button titles rather than a count: two nodes asking a yes/no
             question look identical until you can read the answers. */}
-        {buttonStats.length > 0 ? (
-          <div className="mt-2 space-y-1">
-            {buttonStats.map((button) => (
-              <div
-                key={button.payload}
-                className="flex items-center gap-1.5 text-[10px]"
-              >
-                <span className="min-w-0 flex-1 truncate rounded-full border border-blue-200 px-1.5 py-0.5 text-blue-700 dark:border-blue-900 dark:text-blue-300">
-                  {button.title}
-                </span>
-                <span className="shrink-0 tabular-nums text-muted-foreground">
-                  {button.taps}
-                  {button.rate !== null && ` · ${Math.round(button.rate * 100)}%`}
-                </span>
-              </div>
-            ))}
+        {exits.length > 0 ? (
+          <div className="mt-2 space-y-1.5">
+            {exits.map((exit) => {
+              const taps = tapsByPayload.get(exit.key);
+              return (
+                <NodeExit
+                  key={exit.key}
+                  destination={exit}
+                  tone={exit.key === "next" ? "muted" : "default"}
+                  trailing={
+                    taps ? (
+                      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                        {taps.taps}
+                        {taps.rate !== null && ` · ${Math.round(taps.rate * 100)}%`}
+                      </span>
+                    ) : undefined
+                  }
+                />
+              );
+            })}
           </div>
         ) : (
           replyTitles.length > 0 && (

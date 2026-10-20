@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
+import type { Destination } from "@/lib/flow-destinations";
+import { NodeExit } from "./node-exit";
 
 export interface ActionNodeProps {
   label?: string;
@@ -43,6 +45,8 @@ export interface ActionNodeProps {
   listId?: string;
   fieldValues?: Array<{ field: string; value: string }>;
   tagIds?: string[];
+  /** Attached by the canvas for display only; never saved on the flow. */
+  exits?: Destination[];
 }
 
 /**
@@ -234,6 +238,7 @@ function getSummary(nodeData: ActionNodeProps): string | null {
 
 export function ActionNode({ data, selected }: NodeProps) {
   const nodeData = data as ActionNodeProps;
+  const exits = nodeData.exits ?? [];
   const actionType = nodeData.actionType || "addTag";
   const config = actionConfig[actionType] || {
     icon: Cog,
@@ -313,6 +318,14 @@ export function ActionNode({ data, selected }: NodeProps) {
           <p className="mt-1 truncate text-xs text-muted-foreground">{summary}</p>
         ) : (
           <p className="mt-1 text-xs text-muted-foreground italic">Not configured</p>
+        )}
+
+        {exits.length > 0 && (
+          <div className="mt-2 space-y-1.5 border-t border-border pt-2">
+            {exits.map((exit) => (
+              <NodeExit key={exit.key} destination={exit} tone="muted" />
+            ))}
+          </div>
         )}
       </div>
       {isAbSplit && paths.length > 0 ? (
