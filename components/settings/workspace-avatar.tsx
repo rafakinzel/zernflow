@@ -3,6 +3,10 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Trash2, Upload } from "lucide-react";
+import { ImageCropper } from "./image-cropper";
+
+/** A photo straight off a camera, not what gets uploaded. */
+const MAX_SOURCE_BYTES = 40 * 1024 * 1024;
 
 /** The generated picture, used until someone uploads one of their own. */
 function fallbackUrl(seed: string, size = 96) {
@@ -25,19 +29,23 @@ export function WorkspaceAvatar({
   // Shown while the upload is in flight, so the new picture appears the
   // moment it is picked rather than after the round trip.
   const [preview, setPreview] = useState<string | null>(null);
+  // The file waiting to be framed. The cropper is what actually produces
+  // the upload, so nothing leaves the browser until it is confirmed.
+  const [pending, setPending] = useState<File | null>(null);
 
   const shown = preview ?? avatarUrl ?? fallbackUrl(name);
   const hasOwn = Boolean(preview ?? avatarUrl);
 
-  async function upload(file: File) {
+  async function upload(blob: Blob) {
     setBusy(true);
     setError(null);
-    const localPreview = URL.createObjectURL(file);
+    const localPreview = URL.createObjectURL(blob);
     setPreview(localPreview);
 
     try {
+      const extension = blob.type === "image/png" ? "png" : "webp";
       const body = new FormData();
-      body.append("file", file);
+      body.append("file", blob, `avatar.${extension}`);
       const res = await fetch("/api/v1/workspace/avatar", {
         method: "POST",
         body,
@@ -131,15 +139,37 @@ export function WorkspaceAvatar({
           const file = e.target.files?.[0];
           // Cleared so picking the same file twice still fires a change.
           e.target.value = "";
-          if (file) upload(file);
+          if (!file) return;
+          // Only a guard against a video or a RAW file picked by mistake.
+          // The upload itself is the cropped 512px square, not this.
+          if (file.size > MAX_SOURCE_BYTES) {
+            setError(
+              `That file is ${(file.size / 1024 / 1024).toFixed(0)} MB. Pick one under 40 MB.`
+            );
+            return;
+          }
+          setError(null);
+          setPending(file);
         }}
       />
 
       <p className="mt-2 text-xs text-muted-foreground">
-        PNG, JPG, WEBP or GIF, up to 2 MB. Anyone with the link can view it.
+        Use the original photo, the bigger the better. You crop it here and
+        it is resized for you. Anyone with the link can view it.
       </p>
 
       {error && <p className="mt-1.5 text-xs text-red-500">{error}</p>}
+
+      {pending && (
+        <ImageCropper
+          file={pending}
+          onCancel={() => setPending(null)}
+          onDone={(blob) => {
+            setPending(null);
+            upload(blob);
+          }}
+        />
+      )}
     </div>
   );
 }
