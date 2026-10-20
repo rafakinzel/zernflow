@@ -224,4 +224,10 @@ export interface FlowExecutionContext {
   };
   variables?: Record<string, string>;
   platform?: Platform;
+  /**
+   * The comment_logs row that started this run, when a comment did.
+   * Stored on the session so "which post brought this lead" is one join
+   * rather than a guess built on matching the commenter's handle.
+   */
+  sourceCommentLogId?: string | null;
 }

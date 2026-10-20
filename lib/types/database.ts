@@ -543,6 +543,8 @@ export interface Database {
           waiting_until: string | null;
           waiting_for_input: boolean;
           human_takeover_at: string | null;
+          /** The comment_logs row that started this run, when a comment did. */
+          source_comment_log_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -558,6 +560,7 @@ export interface Database {
           waiting_until?: string | null;
           waiting_for_input?: boolean;
           human_takeover_at?: string | null;
+          source_comment_log_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };

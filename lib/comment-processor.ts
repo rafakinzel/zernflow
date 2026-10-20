@@ -140,6 +140,17 @@ export async function processComment({
 
   const config = matchedTrigger.config as unknown as CommentKeywordConfig;
 
+  // Written before the flow rather than after it, for two reasons. The run
+  // has to be able to point at this row, and the row is also the idempotency
+  // guard: claiming it first closes the window where a webhook redelivered
+  // mid-flow found no log and ran the whole thing a second time.
+  const commentLogId = await logComment({
+    supabase,
+    channel,
+    comment,
+    triggerId: matchedTrigger.id,
+  });
+
   try {
     const senderId = comment.author.id || `comment_${comment.id}`;
     const senderName =
@@ -171,6 +182,15 @@ export async function processComment({
         .single();
 
       if (!newContact) {
+        // The log row is already claimed, so a redelivery will not retry this.
+        // Record why, or the failure disappears.
+        await logComment({
+          supabase,
+          channel,
+          comment,
+          triggerId: matchedTrigger.id,
+          error: "Failed to create contact",
+        });
         return { matched: true, triggerId: matchedTrigger.id, error: "Failed to create contact" };
       }
 
@@ -248,6 +268,7 @@ export async function processComment({
           conversationId: conversation.id,
           workspaceId: channel.workspace_id,
           lateAccountId: channel.late_account_id,
+          sourceCommentLogId: commentLogId,
           incomingMessage: {
             text: comment.text,
             sender: {
@@ -322,8 +343,8 @@ async function logComment({
   dmSent?: boolean;
   replySent?: boolean;
   error?: string;
-}): Promise<void> {
-  await supabase.from("comment_logs").upsert(
+}): Promise<string | null> {
+  const { data } = await supabase.from("comment_logs").upsert(
     {
       channel_id: channel.id,
       workspace_id: channel.workspace_id,
@@ -339,5 +360,9 @@ async function logComment({
       ...(error ? { error } : {}),
     },
     { onConflict: "channel_id,platform_comment_id" },
-  );
+  )
+    .select("id")
+    .single();
+
+  return data?.id ?? null;
 }

@@ -201,6 +201,7 @@ export async function executeFlow(
       channel_id: context.channelId,
       status: "active",
       variables: context.variables || {},
+      source_comment_log_id: context.sourceCommentLogId ?? null,
     })
     .select("id")
     .single();
