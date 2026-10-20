@@ -9,10 +9,9 @@ import { useRouter } from "next/navigation";
 /**
  * The only way into BorrelliChat.
  *
- * Colours here come from the logo rather than the app's own token set: the
- * mark is green and the dashboard's primary is still the purple it shipped
- * with, and a purple button under a green wordmark reads as a mistake on the
- * one screen where the brand is the whole picture.
+ * Everything coloured here uses the app's own primary token, which is the
+ * green out of the logo file. Nothing is hardcoded, so the day the brand
+ * moves this page moves with it.
  *
  * The logo sits on a white plaque in dark mode. Its wordmark is near-black
  * and would otherwise disappear into the background.
@@ -47,22 +46,14 @@ export default function LoginPage() {
   }
 
   const field =
-    "h-11 w-full rounded-lg border border-border bg-background px-3.5 text-sm outline-none transition-shadow placeholder:text-muted-foreground/70 focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand)]/25";
+    "h-11 w-full rounded-lg border border-border bg-background px-3.5 text-sm outline-none transition-shadow placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/25";
 
   return (
-    <div
-      className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#F5F7F6] px-4 py-10 dark:bg-[#0D1114]"
-      style={
-        {
-          "--brand": "#0F8048",
-          "--brand-hover": "#0C6B3C",
-        } as React.CSSProperties
-      }
-    >
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#F5F7F6] px-4 py-10 dark:bg-[#0D1114]">
       {/* A single soft wash of the brand green, behind the mark. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute left-1/2 top-0 h-[32rem] w-[32rem] -translate-x-1/2 -translate-y-1/3 rounded-full bg-[var(--brand)]/10 blur-3xl dark:bg-[var(--brand)]/15"
+        className="pointer-events-none absolute left-1/2 top-0 h-[32rem] w-[32rem] -translate-x-1/2 -translate-y-1/3 rounded-full bg-primary/10 blur-3xl dark:bg-primary/15"
       />
 
       <div className="relative w-full max-w-sm">
@@ -148,7 +139,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="h-11 w-full rounded-lg bg-[var(--brand)] text-sm font-medium text-white transition-colors hover:bg-[var(--brand-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand)] disabled:opacity-60"
+              className="h-11 w-full rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-60"
             >
               {loading ? "Signing in…" : "Sign in"}
             </button>
