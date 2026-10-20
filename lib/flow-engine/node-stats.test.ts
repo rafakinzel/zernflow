@@ -86,6 +86,62 @@ describe("findPayloadOwner", () => {
   });
 });
 
+describe("findPayloadOwner, walking back from the waiting node", () => {
+  // The shape the flow actually has: a pitch with buttons, a delay that
+  // waits on them, and a rescue that re-offers the same buttons so the
+  // reply lands on the condition that already exists.
+  const nodes = [
+    messageNode("fa_6", [["Sim, é isso mesmo!", "FA_SIM"]]),
+    { id: "fa_13", data: { messages: undefined } },
+    messageNode("fa_130", [["Quero marcar", "FA_SIM"]]),
+    { id: "fa_131", data: { messages: undefined } },
+  ];
+  const edges = [
+    { source: "fa_6", target: "fa_13" },
+    { source: "fa_13", target: "fa_130" },
+    { source: "fa_130", target: "fa_131" },
+  ];
+
+  it("credits the rescue when the person was waiting on the rescue", () => {
+    expect(
+      findPayloadOwner(nodes, "FA_SIM", { waitingAt: "fa_131", edges })
+    ).toEqual({ nodeId: "fa_130", title: "Quero marcar" });
+  });
+
+  it("credits the pitch when the person was waiting on the pitch", () => {
+    expect(
+      findPayloadOwner(nodes, "FA_SIM", { waitingAt: "fa_13", edges })
+    ).toEqual({ nodeId: "fa_6", title: "Sim, é isso mesmo!" });
+  });
+
+  it("falls back to the flow-wide scan with no session position", () => {
+    expect(findPayloadOwner(nodes, "FA_SIM")?.nodeId).toBe("fa_6");
+    expect(findPayloadOwner(nodes, "FA_SIM", { waitingAt: null, edges })?.nodeId).toBe(
+      "fa_6"
+    );
+  });
+
+  it("falls back rather than giving up when nothing upstream offers it", () => {
+    const owner = findPayloadOwner(nodes, "FA_SIM", {
+      waitingAt: "fa_13",
+      edges: [{ source: "fa_999", target: "fa_13" }],
+    });
+    expect(owner?.nodeId).toBe("fa_6");
+  });
+
+  it("survives a cycle in the edges", () => {
+    const owner = findPayloadOwner(nodes, "FA_SIM", {
+      waitingAt: "fa_131",
+      edges: [
+        ...edges,
+        { source: "fa_131", target: "fa_130" },
+        { source: "fa_130", target: "fa_131" },
+      ],
+    });
+    expect(owner?.nodeId).toBe("fa_130");
+  });
+});
+
 describe("buildNodeStats", () => {
   const nodes = [
     messageNode("fa_6", [

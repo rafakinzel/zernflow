@@ -319,7 +319,7 @@ export async function resumeSession(
   // The payload is the stable handle for a tap; the label can be reworded.
   if (tapped) {
     context.variables.payload = tapped;
-    await recordButtonTap(supabase, nodes, context, tapped);
+    await recordButtonTap(supabase, nodes, edges, session.current_node_id, context, tapped);
   }
 
   // The contact replied, so the Smart Delay give-up job must not fire later
@@ -1720,10 +1720,16 @@ async function withinMessagingWindow(
 async function recordButtonTap(
   supabase: SupabaseClient<Database>,
   nodes: FlowNode[],
+  edges: FlowEdge[],
+  waitingAt: string | null,
   context: FlowExecutionContext,
   payload: string
 ): Promise<void> {
-  const owner = findPayloadOwner(nodes as unknown as { id: string }[], payload);
+  const owner = findPayloadOwner(
+    nodes as unknown as { id: string }[],
+    payload,
+    { waitingAt, edges: edges as unknown as { source: string; target: string }[] }
+  );
 
   await supabase.from("analytics_events").insert({
     workspace_id: context.workspaceId,

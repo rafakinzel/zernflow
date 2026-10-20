@@ -26,6 +26,20 @@ export interface RawNode {
   data?: { messages?: unknown } | null;
 }
 
+export interface RawEdge {
+  source: string;
+  target: string;
+}
+
+/**
+ * How far back to look for the node that drew a button.
+ *
+ * In practice it is one hop: a message, then the Smart Delay that waits on
+ * it. A couple more covers a rescue that routes through a condition first,
+ * and the cap stops a cycle from walking forever.
+ */
+const MAX_HOPS_BACK = 4;
+
 export interface ButtonStat {
   payload: string;
   title: string;
@@ -60,24 +74,71 @@ export function nodeOptions(node: RawNode): RawOption[] {
   return options;
 }
 
+/** The payload's option on a node, when that node offers it. */
+function optionOn(node: RawNode, payload: string) {
+  for (const option of nodeOptions(node)) {
+    if (option.payload === payload) {
+      return { nodeId: node.id, title: option.title?.trim() || payload };
+    }
+  }
+  return null;
+}
+
 /**
  * The node that offered a payload.
  *
- * A tap arrives knowing only its payload, and the node that was waiting when
- * it landed is the delay after the message, not the message itself. Payloads
- * are authored unique within a flow, so the first node offering it is the
- * one that offered it.
+ * A tap arrives knowing only its payload, and the node waiting when it lands
+ * is the delay after the message, not the message that drew the button.
+ *
+ * Scanning the flow for the payload is not enough, because the same payload
+ * is deliberately reused: a rescue message re-offers the original buttons so
+ * the reply lands back on the condition that already exists. `FA_SIM` is on
+ * the pitch and on the rescue, and crediting both taps to whichever comes
+ * first in the array would quietly make the busier of the two look better
+ * than it is.
+ *
+ * So when the waiting node is known, the walk starts there and goes
+ * backwards: the nearest node offering the payload is the one the person was
+ * actually looking at. The flow-wide scan stays as the fallback for a tap
+ * with no session behind it.
  */
 export function findPayloadOwner(
   nodes: RawNode[],
-  payload: string
+  payload: string,
+  context?: { waitingAt?: string | null; edges?: RawEdge[] }
 ): { nodeId: string; title: string } | null {
-  for (const node of nodes) {
-    for (const option of nodeOptions(node)) {
-      if (option.payload === payload) {
-        return { nodeId: node.id, title: option.title?.trim() || payload };
+  const waitingAt = context?.waitingAt;
+  const edges = context?.edges;
+
+  if (waitingAt && edges?.length) {
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    let frontier = [waitingAt];
+    const seen = new Set(frontier);
+
+    for (let hop = 0; hop < MAX_HOPS_BACK && frontier.length > 0; hop++) {
+      const found = frontier
+        .map((id) => byId.get(id))
+        .filter((node): node is RawNode => Boolean(node))
+        .map((node) => optionOn(node, payload))
+        .find((owner) => owner !== null);
+      if (found) return found;
+
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const edge of edges) {
+          if (edge.target === id && !seen.has(edge.source)) {
+            seen.add(edge.source);
+            next.push(edge.source);
+          }
+        }
       }
+      frontier = next;
     }
+  }
+
+  for (const node of nodes) {
+    const owner = optionOn(node, payload);
+    if (owner) return owner;
   }
   return null;
 }
