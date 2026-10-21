@@ -168,3 +168,68 @@ describe("resumeSession: the messaging window", () => {
     expect(fake.asked("messages", "inbound")).toBe(false);
   });
 });
+
+describe("resumeSession: a tap that arrives while the run sits in a timed Delay", () => {
+  // The shape her test hit: the run is active but not waiting for a reply,
+  // because it is inside a Delay. The tap belongs to a message further back.
+  const withDelay = [
+    ...nodes,
+    { id: "pause", type: "action", data: { actionType: "delay", duration: 18, unit: "hours" } },
+  ];
+  const edgesWithDelay = [
+    ...edges,
+    { id: "e3", source: "yes", target: "pause" },
+    { id: "e4", source: "pause", target: "no" },
+  ];
+
+  const parked = {
+    ...session,
+    current_node_id: "pause",
+  } as unknown as Database["public"]["Tables"]["flow_sessions"]["Row"];
+
+  function parkedFixture() {
+    return createFakeSupabase({
+      rows: {
+        flows: [{ id: "flow-1", nodes: withDelay, edges: edgesWithDelay, status: "published" }],
+        channels: [{ platform: "instagram", late_account_id: "acct-1" }],
+        conversations: [{ late_conversation_id: "lc-1" }],
+        contacts: [{ last_interaction_at: new Date().toISOString() }],
+        workspaces: [{ late_api_key_encrypted: "enc:v1:fake" }],
+        analytics_events: [],
+      },
+    });
+  }
+
+  it("follows the button rather than the Delay's own exit", async () => {
+    const fake = parkedFixture();
+
+    await resumeSession(
+      fake.client as unknown as SupabaseClient<Database>,
+      parked,
+      { ...context(), incomingMessage: { postbackPayload: "NAO" } } as FlowExecutionContext
+    );
+
+    // "NAO" belongs to `ask` and leads to `no`. Taking the Delay's plain exit
+    // would also land on `no` by coincidence, so assert the route was chosen
+    // by the button: the session is moved onto the node that owns it.
+    const moved = fake
+      .on("flow_sessions", "update")
+      .map((c) => (c.payload as { current_node_id?: string })?.current_node_id)
+      .filter(Boolean);
+    expect(moved).toContain("ask");
+  });
+
+  it("drops the Delay's own resume job, so the person gets one path and not two", async () => {
+    const fake = parkedFixture();
+
+    await resumeSession(
+      fake.client as unknown as SupabaseClient<Database>,
+      parked,
+      { ...context(), incomingMessage: { postbackPayload: "NAO" } } as FlowExecutionContext
+    );
+
+    const deletes = fake.on("scheduled_jobs", "delete");
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0].filters.join(" ")).toContain("resume_flow");
+  });
+});

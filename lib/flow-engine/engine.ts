@@ -336,12 +336,14 @@ export async function resumeSession(
     );
   }
 
-  // The contact replied, so the Smart Delay give-up job must not fire later
-  // and push them down the "no reply" branch mid-conversation.
+  // The contact replied, so no pending job for this run may fire later. The
+  // give-up job would push them down the "no reply" branch mid-conversation,
+  // and a timed Delay's resume job would carry on from where the run was
+  // parked, so the person would get both that path and the one they chose.
   await supabase
     .from("scheduled_jobs")
     .delete()
-    .eq("type", "smart_delay_timeout")
+    .in("type", ["smart_delay_timeout", "resume_flow"])
     .eq("status", "pending")
     .contains("payload", { sessionId: session.id });
 
@@ -410,11 +412,17 @@ export async function resumeSession(
   // through the button itself. Without this the tap fell through to the
   // current node's first exit and answered a question nobody asked.
   //
-  // Only from a node that draws its own buttons, or one with no exits left at
-  // all. A run parked on a separate Smart Delay is the older shape, where the
-  // tap is read downstream by a condition and the generic "replied" exit is
-  // the correct way out; sending that shape down here would strand it.
-  const parkedOnDecision = offered.length > 0 || outgoing.length === 0;
+  // This has to work from wherever the run is parked, not only from a node
+  // that draws buttons. A run sitting inside a timed Delay is the case that
+  // caught us: it is active but not waiting for a reply, so the tap matched
+  // nothing and was dropped, and following the Delay's own exit instead would
+  // skip the wait and answer a question nobody asked.
+  //
+  // The one exception is a separate Smart Delay node, the older shape, where
+  // the tap is read by a condition further down and the generic "replied"
+  // exit is the correct way out. Sending that shape down here would strand it.
+  const parkedOnSmartDelay = resolveNodeType(currentNode) === "smartDelay";
+  const parkedOnDecision = !parkedOnSmartDelay;
   if (
     answered &&
     parkedOnDecision &&

@@ -358,25 +358,38 @@ async function processMessageEvent(
         // that flow did not know the payload at all, handed the conversation
         // to a human and took the contact out of every automation.
         //
-        // Only a run that finished on its own, and only inside the 24h window
-        // we could reply in anyway. A cancelled run was cancelled on purpose
-        // (a keyword restart), and reopening it would talk over the new one.
+        // Two shapes qualify, and both were being dropped. A run that
+        // finished, and a run that is still active but not waiting for a
+        // reply because it is sitting inside a timed Delay: that one matched
+        // neither the waiting query above nor a search for finished runs, so
+        // a tap during a Delay did nothing at all.
+        //
+        // Only inside the 24h window we could reply in anyway, and never a
+        // cancelled run: that was cancelled on purpose by a keyword restart,
+        // and reopening it would talk over the new one.
         let reopened: { id: string; flow_id: string } | null = null;
         if (!waitingSessions?.[0] && tapped) {
           const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
           const { data: finished } = await supabase
             .from("flow_sessions")
-            .select("id, flow_id")
+            .select("id, flow_id, status")
             .eq("contact_id", contactId)
             .eq("channel_id", channel.id)
-            .eq("status", "completed")
+            .in("status", ["completed", "active"])
             .is("human_takeover_at", null)
             .gte("updated_at", dayAgo)
             .order("updated_at", { ascending: false })
             .limit(10);
 
           const candidates = finished ?? [];
-          let owning: { id: string; flow_id: string } | undefined;
+          type Resumable = {
+            id: string;
+            flow_id: string;
+            status: NonNullable<
+              Database["public"]["Tables"]["flow_sessions"]["Row"]["status"]
+            >;
+          };
+          let owning: Resumable | undefined;
 
           if (candidates.length > 0) {
             const { data: flows } = await supabase
@@ -398,15 +411,21 @@ async function processMessageEvent(
             );
 
             // Newest first, so the most recent run of the owning flow wins.
-            owning = candidates.find((c) => routesPayload.has(c.flow_id));
+            owning = candidates.find((c) =>
+              routesPayload.has(c.flow_id)
+            ) as Resumable | undefined;
           }
 
           if (owning) {
+            // Guarded on the status it was read with, so a run that finished
+            // or restarted in between is not resurrected underneath whatever
+            // took over. `waiting_for_input` is what the engine's resume
+            // looks for; the engine then follows the button itself.
             const { data: live } = await supabase
               .from("flow_sessions")
               .update({ status: "active", waiting_for_input: true })
               .eq("id", owning.id)
-              .eq("status", "completed")
+              .eq("status", owning.status)
               .select("id, flow_id")
               .single();
             if (live) reopened = live;
