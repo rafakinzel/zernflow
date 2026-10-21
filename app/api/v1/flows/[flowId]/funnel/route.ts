@@ -135,7 +135,12 @@ export async function GET(
     };
   }
 
-  const counted = countSteps(steps, reachedByNode, entered);
+  const counted = countSteps(
+    steps,
+    reachedByNode,
+    entered,
+    (flow.edges ?? []) as unknown as RawEdge[]
+  );
 
   return NextResponse.json({
     flow: { id: flow.id, name: flow.name },

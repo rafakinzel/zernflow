@@ -101,6 +101,31 @@ export function funnelSteps(nodes: RawNode[], edges: RawEdge[]): FunnelStep[] {
     .sort((a, b) => a.depth - b.depth);
 }
 
+/** Every node reachable from each node, for telling a branch from a fall. */
+export function reachableFrom(edges: RawEdge[], start: string): Set<string> {
+  const outgoing = new Map<string, string[]>();
+  for (const edge of edges) {
+    const list = outgoing.get(edge.source);
+    if (list) list.push(edge.target);
+    else outgoing.set(edge.source, [edge.target]);
+  }
+
+  const seen = new Set<string>();
+  let frontier = [start];
+  while (frontier.length > 0) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const target of outgoing.get(id) ?? []) {
+        if (seen.has(target)) continue;
+        seen.add(target);
+        next.push(target);
+      }
+    }
+    frontier = next;
+  }
+  return seen;
+}
+
 export interface CountedStep extends FunnelStep {
   /** People who reached it. */
   reached: number;
@@ -108,6 +133,12 @@ export interface CountedStep extends FunnelStep {
   share: number | null;
   /** People who got this far and no further, null for the first step. */
   lostBefore: number | null;
+  /**
+   * True when the step before it on the page cannot actually reach it: the
+   * two sit on branches that exclude each other, so the difference between
+   * them is a fork, not a fall.
+   */
+  afterFork: boolean;
 }
 
 /**
@@ -121,19 +152,42 @@ export interface CountedStep extends FunnelStep {
 export function countSteps(
   steps: FunnelStep[],
   reachedByNode: Record<string, number>,
-  entered: number
+  entered: number,
+  edges: RawEdge[] = []
 ): CountedStep[] {
+  // What each earlier step can actually lead to. A flow branches, so the
+  // row above is not always the step people came from: the adviser offer
+  // and the course offer exclude each other, and subtracting one from the
+  // other reported everyone who took the other branch as lost.
+  const reach = new Map<string, Set<string>>();
+  for (const step of steps) {
+    reach.set(step.nodeId, reachableFrom(edges, step.nodeId));
+  }
+
   return steps.map((step, index) => {
     const reached = reachedByNode[step.nodeId] ?? 0;
+
+    // The nearest earlier step that can actually reach this one. None means
+    // this step is on its own branch, so it is measured against everyone
+    // who entered.
+    let fromIndex = -1;
+    for (let i = index - 1; i >= 0; i--) {
+      if (reach.get(steps[i].nodeId)?.has(step.nodeId)) {
+        fromIndex = i;
+        break;
+      }
+    }
+
     const previous =
-      index === 0 ? entered : reachedByNode[steps[index - 1].nodeId] ?? 0;
+      fromIndex === -1 ? entered : reachedByNode[steps[fromIndex].nodeId] ?? 0;
     const lost = previous - reached;
 
     return {
       ...step,
       reached,
       share: entered > 0 ? reached / entered : null,
-      lostBefore: index === 0 && entered === 0 ? null : Math.max(lost, 0),
+      lostBefore: entered === 0 ? null : Math.max(lost, 0),
+      afterFork: index > 0 && fromIndex !== index - 1,
     };
   });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowDown, Loader2 } from "lucide-react";
+import { ArrowDown, GitBranch, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import type { CountedStep } from "@/lib/analytics/flow-funnel";
@@ -145,6 +145,7 @@ function FunnelBody({ data, flowId }: { data: Funnel; flowId: string }) {
                 <Drop
                   lost={step.lostBefore}
                   worst={worst?.nodeId === step.nodeId}
+                  afterFork={step.afterFork}
                 />
               )}
               <Step
@@ -238,8 +239,31 @@ function Step({
   );
 }
 
-/** The gap between two steps, which is where the answer usually is. */
-function Drop({ lost, worst }: { lost: number; worst: boolean }) {
+/**
+ * The gap between two steps, which is where the answer usually is.
+ *
+ * Unless the two steps sit on branches that exclude each other, where the
+ * gap is a fork: the people missing from one went down the other, and
+ * calling them lost blames the flow for working.
+ */
+function Drop({
+  lost,
+  worst,
+  afterFork,
+}: {
+  lost: number;
+  worst: boolean;
+  afterFork: boolean;
+}) {
+  if (afterFork) {
+    return (
+      <div className="flex items-center gap-1.5 py-1.5 pl-[11.5rem] text-xs text-muted-foreground">
+        <GitBranch className="h-3 w-3" />
+        another branch, counted from where it splits
+      </div>
+    );
+  }
+
   if (lost <= 0) {
     return (
       <div className="py-1.5 pl-[11.5rem] text-xs text-muted-foreground">

@@ -87,19 +87,19 @@ describe("countSteps", () => {
   const steps = funnelSteps(nodes, edges);
 
   it("measures each step against the people who entered", () => {
-    const counted = countSteps(steps, { ask: 70, offer: 42 }, 100);
+    const counted = countSteps(steps, { ask: 70, offer: 42 }, 100, edges);
 
     expect(counted[0]).toMatchObject({ reached: 70, share: 0.7, lostBefore: 30 });
     expect(counted[1]).toMatchObject({ reached: 42, share: 0.42, lostBefore: 28 });
   });
 
   it("reports a step nobody reached as zero, not as missing", () => {
-    const counted = countSteps(steps, { ask: 10 }, 10);
+    const counted = countSteps(steps, { ask: 10 }, 10, edges);
     expect(counted[1]).toMatchObject({ reached: 0, lostBefore: 10 });
   });
 
   it("says nothing about share when nobody entered", () => {
-    const counted = countSteps(steps, {}, 0);
+    const counted = countSteps(steps, {}, 0, edges);
     expect(counted[0].share).toBeNull();
     expect(counted[0].lostBefore).toBeNull();
   });
@@ -107,7 +107,7 @@ describe("countSteps", () => {
   it("does not invent a loss when a later step was reached by more", () => {
     // A rescue can send someone back through a node. Reporting -5 lost
     // would be noise; claiming a smooth funnel would be a lie.
-    const counted = countSteps(steps, { ask: 40, offer: 45 }, 100);
+    const counted = countSteps(steps, { ask: 40, offer: 45 }, 100, edges);
     expect(counted[1].reached).toBe(45);
     expect(counted[1].lostBefore).toBe(0);
   });
@@ -115,12 +115,48 @@ describe("countSteps", () => {
 
 describe("biggestDrop", () => {
   it("finds the steepest fall", () => {
-    const counted = countSteps(funnelSteps(nodes, edges), { ask: 70, offer: 20 }, 100);
+    const counted = countSteps(funnelSteps(nodes, edges), { ask: 70, offer: 20 }, 100, edges);
     expect(biggestDrop(counted)?.nodeId).toBe("offer");
   });
 
   it("has nothing to say when nobody was lost", () => {
-    const counted = countSteps(funnelSteps(nodes, edges), { ask: 10, offer: 10 }, 10);
+    const counted = countSteps(funnelSteps(nodes, edges), { ask: 10, offer: 10 }, 10, edges);
     expect(biggestDrop(counted)).toBeNull();
+  });
+});
+
+describe("countSteps across a fork", () => {
+  // Two offers on branches that exclude each other, the shape that caught
+  // us live: everyone who took the course branch was being reported as
+  // lost before the adviser offer, which they never could have reached.
+  const forked: RawNode[] = [
+    { id: "t", type: "trigger", data: {} },
+    { id: "ask", type: "sendMessage", data: { isFunnelStep: true, label: "Perguntou" } },
+    { id: "adviser", type: "sendMessage", data: { isFunnelStep: true, label: "Oferta adviser" } },
+    { id: "course", type: "sendMessage", data: { isFunnelStep: true, label: "Oferta curso" } },
+  ];
+  const forkEdges: RawEdge[] = [
+    { source: "t", target: "ask" },
+    { source: "ask", target: "adviser", sourceHandle: "A" },
+    { source: "ask", target: "course", sourceHandle: "B" },
+  ];
+
+  it("does not count the other branch as people who stopped", () => {
+    const steps = funnelSteps(forked, forkEdges);
+    const counted = countSteps(steps, { ask: 10, adviser: 4, course: 6 }, 10, forkEdges);
+
+    const adviser = counted.find((s) => s.nodeId === "adviser")!;
+    const course = counted.find((s) => s.nodeId === "course")!;
+
+    // Both come from `ask`, so each is measured against it, never against
+    // the other.
+    expect(adviser.lostBefore).toBe(6);
+    expect(course.lostBefore).toBe(4);
+    expect(course.afterFork).toBe(true);
+  });
+
+  it("marks a sequential step as not being after a fork", () => {
+    const counted = countSteps(funnelSteps(nodes, edges), { ask: 70, offer: 42 }, 100, edges);
+    expect(counted[1].afterFork).toBe(false);
   });
 });
