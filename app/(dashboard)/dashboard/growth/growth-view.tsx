@@ -10,9 +10,6 @@ import {
   PowerOff,
   Trash2,
   X,
-  TrendingUp,
-  Send,
-  Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -87,10 +84,7 @@ export function GrowthView({
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const conversionRate =
-    stats.totalComments > 0
-      ? ((stats.dmsSent / stats.totalComments) * 100).toFixed(1)
-      : "0.0";
+
 
   async function handleToggle(trigger: TriggerWithFlow) {
     setTogglingId(trigger.id);
@@ -308,33 +302,10 @@ export function GrowthView({
       </div>
 
       <div className="flex-1 overflow-auto p-8">
-        {/* Stats cards */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            label="Comments Processed"
-            value={stats.totalComments}
-            icon={<Eye className="h-4 w-4" />}
-            sublabel="Last 30 days"
-          />
-          <StatCard
-            label="Keywords Matched"
-            value={stats.matchedComments}
-            icon={<MessageCircle className="h-4 w-4" />}
-            sublabel="Last 30 days"
-          />
-          <StatCard
-            label="DMs Sent"
-            value={stats.dmsSent}
-            icon={<Send className="h-4 w-4" />}
-            sublabel="Last 30 days"
-          />
-          <StatCard
-            label="Conversion Rate"
-            value={`${conversionRate}%`}
-            icon={<TrendingUp className="h-4 w-4" />}
-            sublabel="Comments to DMs"
-          />
-        </div>
+        {/* One funnel rather than four tiles: the fourth was the ratio of
+            two of the others, and three counts side by side hide the step
+            where people are actually lost. */}
+        <CommentFunnel stats={stats} />
 
         {/* Create / Edit form */}
         {(showCreate || editingId) && (
@@ -606,6 +577,15 @@ export function GrowthView({
                               All channels
                             </span>
                           )}
+
+                          {!trigger.channel_id && (
+                            <span
+                              className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                              title="Publishing the flow rebuilds this rule from its trigger node, so changes made here would be replaced."
+                            >
+                              From the flow
+                            </span>
+                          )}
                         </div>
 
                         {/* Keywords */}
@@ -646,7 +626,25 @@ export function GrowthView({
                         ) : null}
                       </div>
 
-                      {/* Actions */}
+                      {/* Actions.
+
+                          A rule that came from a flow's trigger node is
+                          deleted and rebuilt on every publish of that flow.
+                          Editing, pausing or deleting it here looked like it
+                          worked and was undone at the next publish, with
+                          nothing on screen to say why, so those controls are
+                          not offered: the flow owns it. */}
+                      {!trigger.channel_id ? (
+                        <p className="ml-4 shrink-0 text-xs text-muted-foreground">
+                          Edit it in{" "}
+                          <Link
+                            href={`/dashboard/flows/${trigger.flow_id}`}
+                            className="font-medium text-foreground underline underline-offset-2"
+                          >
+                            {trigger.flows?.name || "the flow"}
+                          </Link>
+                        </p>
+                      ) : (
                       <div className="ml-4 flex items-center gap-1">
                         <button
                           onClick={() => handleStartEdit(trigger)}
@@ -683,6 +681,7 @@ export function GrowthView({
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -785,32 +784,6 @@ export function GrowthView({
   );
 }
 
-function StatCard({
-  label,
-  value,
-  icon,
-  sublabel,
-}: {
-  label: string;
-  value: number | string;
-  icon: React.ReactNode;
-  sublabel: string;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <div className="text-muted-foreground/60">{icon}</div>
-      </div>
-      <p className="mt-2 text-3xl font-bold text-foreground">
-        {value}
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground/60">
-        {sublabel}
-      </p>
-    </div>
-  );
-}
 
 function formatRelativeTime(dateStr: string): string {
   const now = Date.now();
@@ -831,4 +804,69 @@ function formatRelativeTime(dateStr: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+/**
+ * Comments in, then the ones a rule recognised, then the ones that produced
+ * a DM. Where the number falls is the whole point, and three tiles in a row
+ * made every drop look like a separate fact.
+ */
+function CommentFunnel({
+  stats,
+}: {
+  stats: { totalComments: number; matchedComments: number; dmsSent: number };
+}) {
+  const { totalComments, matchedComments, dmsSent } = stats;
+
+  // No comments is not a nought per cent conversion, it is no data. The old
+  // tile printed "0.0%" either way, which reads as a failure that did not
+  // happen.
+  const share = (value: number) =>
+    totalComments > 0 ? value / totalComments : null;
+
+  const steps = [
+    { label: "Comments", value: totalComments, share: totalComments > 0 ? 1 : null, tone: "bg-primary" },
+    { label: "Matched a rule", value: matchedComments, share: share(matchedComments), tone: "bg-primary/60" },
+    { label: "Got a DM", value: dmsSent, share: share(dmsSent), tone: "bg-primary/30" },
+  ];
+
+  return (
+    <section className="rounded-xl border border-border p-5">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-medium">From comment to DM</h2>
+        <span className="text-xs text-muted-foreground">Last 30 days</span>
+      </div>
+
+      {totalComments === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          No comments have come through in the last 30 days. Nothing here is
+          failing; there is simply nothing to count yet.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {steps.map((step) => (
+            <div key={step.label}>
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">{step.label}</span>
+                <span className="font-medium tabular-nums">
+                  {step.value}
+                  {step.share !== null && step.share < 1 && (
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                      {(step.share * 100).toFixed(0)}%
+                    </span>
+                  )}
+                </span>
+              </div>
+              <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn("h-full rounded-full", step.tone)}
+                  style={{ width: `${(step.share ?? 0) * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }

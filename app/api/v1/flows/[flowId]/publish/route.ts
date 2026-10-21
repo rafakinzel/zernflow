@@ -107,11 +107,11 @@ export async function POST(
     }
   }
 
-  // Activate any remaining triggers for this flow (e.g. comment_keyword managed elsewhere).
-  await supabase
-    .from("triggers")
-    .update({ is_active: true })
-    .eq("flow_id", flowId);
+  // Publishing says what the flow does, not which Growth rules are switched
+  // on. Reactivating every row for this flow undid the pause button on the
+  // Growth tab: a rule turned off there came back on at the next publish,
+  // with nothing on screen to say why. The rows rebuilt from the node are
+  // inserted active above, so nothing else needs touching.
 
   return NextResponse.json(published);
 }

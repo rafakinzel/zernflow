@@ -53,10 +53,14 @@ export default async function GrowthPage() {
       .eq("workspace_id", workspace.id)
       .eq("dm_sent", true)
       .gte("created_at", thirtyDaysAgo),
+    // Same 30 days as the funnel above it. Without the filter the list
+    // reached back forever while the counts beside it did not, so the two
+    // disagreed about what "recent" meant.
     supabase
       .from("comment_logs")
       .select("*")
       .eq("workspace_id", workspace.id)
+      .gte("created_at", thirtyDaysAgo)
       .order("created_at", { ascending: false })
       .limit(20),
   ]);
