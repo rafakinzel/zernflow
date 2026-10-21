@@ -164,30 +164,43 @@ export function countSteps(
     reach.set(step.nodeId, reachableFrom(edges, step.nodeId));
   }
 
+  // The nearest earlier step that can actually reach each one. -1 means no
+  // earlier step reaches it, so it is measured against everyone who entered.
+  const baselines = steps.map((step, index) => {
+    for (let i = index - 1; i >= 0; i--) {
+      if (reach.get(steps[i].nodeId)?.has(step.nodeId)) return i;
+    }
+    return -1;
+  });
+  const baselineOf = (index: number) => baselines[index];
+
   return steps.map((step, index) => {
     const reached = reachedByNode[step.nodeId] ?? 0;
-
-    // The nearest earlier step that can actually reach this one. None means
-    // this step is on its own branch, so it is measured against everyone
-    // who entered.
-    let fromIndex = -1;
-    for (let i = index - 1; i >= 0; i--) {
-      if (reach.get(steps[i].nodeId)?.has(step.nodeId)) {
-        fromIndex = i;
-        break;
-      }
-    }
+    const fromIndex = baselines[index];
 
     const previous =
       fromIndex === -1 ? entered : reachedByNode[steps[fromIndex].nodeId] ?? 0;
-    const lost = previous - reached;
+
+    // Everyone who came from the same place, this step included. At a fork
+    // the people missing from one branch are standing in another, so the
+    // loss is what the fork lost altogether, not what each branch lacks.
+    const siblings = steps.filter((_, i) => baselineOf(i) === fromIndex);
+    const reachedAcross = siblings.reduce(
+      (sum, s) => sum + (reachedByNode[s.nodeId] ?? 0),
+      0
+    );
+
+    // Counted once, on the first branch out of the fork; the others say
+    // they are branches rather than repeating the same loss.
+    const firstOfFork = siblings[0]?.nodeId === step.nodeId;
+    const lost = previous - reachedAcross;
 
     return {
       ...step,
       reached,
       share: entered > 0 ? reached / entered : null,
-      lostBefore: entered === 0 ? null : Math.max(lost, 0),
-      afterFork: index > 0 && fromIndex !== index - 1,
+      lostBefore: entered === 0 || !firstOfFork ? null : Math.max(lost, 0),
+      afterFork: siblings.length > 1 && !firstOfFork,
     };
   });
 }

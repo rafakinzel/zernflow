@@ -150,13 +150,44 @@ describe("countSteps across a fork", () => {
 
     // Both come from `ask`, so each is measured against it, never against
     // the other.
-    expect(adviser.lostBefore).toBe(6);
-    expect(course.lostBefore).toBe(4);
+    // 10 answered, 4 + 6 took one of the two offers, so nobody was lost at
+    // the fork and neither branch is blamed for the other's people.
+    expect(adviser.lostBefore).toBe(0);
+    expect(course.lostBefore).toBeNull();
     expect(course.afterFork).toBe(true);
   });
 
   it("marks a sequential step as not being after a fork", () => {
     const counted = countSteps(funnelSteps(nodes, edges), { ask: 70, offer: 42 }, 100, edges);
     expect(counted[1].afterFork).toBe(false);
+  });
+});
+
+describe("a fork where people really were lost", () => {
+  const forked: RawNode[] = [
+    { id: "t", type: "trigger", data: {} },
+    { id: "ask", type: "sendMessage", data: { isFunnelStep: true, label: "Perguntou" } },
+    { id: "adviser", type: "sendMessage", data: { isFunnelStep: true, label: "Oferta adviser" } },
+    { id: "course", type: "sendMessage", data: { isFunnelStep: true, label: "Oferta curso" } },
+  ];
+  const forkEdges: RawEdge[] = [
+    { source: "t", target: "ask" },
+    { source: "ask", target: "adviser", sourceHandle: "A" },
+    { source: "ask", target: "course", sourceHandle: "B" },
+  ];
+
+  it("counts only the people who took neither branch", () => {
+    // 10 answered; 2 saw an offer; 8 answered and then went quiet.
+    const counted = countSteps(
+      funnelSteps(forked, forkEdges),
+      { ask: 10, adviser: 0, course: 2 },
+      10,
+      forkEdges
+    );
+
+    const adviser = counted.find((s) => s.nodeId === "adviser")!;
+    expect(adviser.lostBefore).toBe(8);
+    // The loss belongs to the fork, so it is not repeated on the sibling.
+    expect(counted.find((s) => s.nodeId === "course")!.lostBefore).toBeNull();
   });
 });
