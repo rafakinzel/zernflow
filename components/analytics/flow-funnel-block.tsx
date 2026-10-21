@@ -141,9 +141,9 @@ function FunnelBody({ data, flowId }: { data: Funnel; flowId: string }) {
           <Step label="Entered the flow" value={entered} width={1} />
           {steps.map((step) => (
             <div key={step.nodeId}>
-              {step.lostBefore !== null && (
+              {(step.lostBefore !== null || step.afterFork) && (
                 <Drop
-                  lost={step.lostBefore}
+                  lost={step.lostBefore ?? 0}
                   worst={worst?.nodeId === step.nodeId}
                   afterFork={step.afterFork}
                 />
