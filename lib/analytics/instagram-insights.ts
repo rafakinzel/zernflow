@@ -142,10 +142,11 @@ export function buildSummary({
   const split = splitReach(reachByFollowerType);
   const series = followerSeries(followers);
 
+  const reach = metricTotal(totals, "reach");
   return {
     since,
     until,
-    reach: metricTotal(totals, "reach"),
+    reach,
     reachFromFollowers: split.followers,
     reachFromNonFollowers: split.nonFollowers,
     newAudienceShare: split.share,
@@ -160,7 +161,19 @@ export function buildSummary({
     followersLost: metricTotal(followers, "followers_lost"),
     followerCount: series.length ? series[series.length - 1].value : null,
     followerSeries: series,
-    unavailable: unavailableNames(totals),
+    // A split that did not come back is named, not left as a bare dash. The
+    // reach metric itself is served, so it never lands in Instagram's own
+    // unavailable list, and the panel had no way to say why the number was
+    // missing: it simply showed "—" as though the account had no reach.
+    //
+    // Only worth saying when reach itself arrived. When nothing came back,
+    // naming one missing breakdown implies the rest was fine.
+    unavailable: [
+      ...unavailableNames(totals),
+      ...(reach !== null && split.share === null
+        ? ["reach by follower type"]
+        : []),
+    ],
   };
 }
 

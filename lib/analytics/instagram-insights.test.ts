@@ -172,6 +172,23 @@ describe("buildSummary", () => {
     expect(summary.accountsEngaged).toBeNull();
   });
 
+  it("names the follower split when reach came but the breakdown did not", () => {
+    // What the live account actually returns: reach is served, the split is
+    // silently absent. The panel used to show a bare "—" for it, which reads
+    // as "no reach" rather than "Instagram did not answer this one".
+    const summary = buildSummary({
+      totals: { metrics: { reach: { total: 46230 } } },
+      reachByFollowerType: { metrics: { reach: { total: 46230 } } },
+      followers: {},
+      since: "2026-09-21",
+      until: "2026-10-21",
+    });
+
+    expect(summary.reach).toBe(46230);
+    expect(summary.newAudienceShare).toBeNull();
+    expect(summary.unavailable).toContain("reach by follower type");
+  });
+
   it("survives every call coming back empty", () => {
     const summary = buildSummary({
       totals: {},
