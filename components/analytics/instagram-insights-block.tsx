@@ -262,7 +262,10 @@ function Followers({
             {series.map((point) => (
               <div
                 key={point.date}
-                className="group relative flex-1"
+                // h-full matters: the bar's height is a percentage, and
+                // without a height on this wrapper it resolves against an
+                // auto-height parent and collapses to a line.
+                className="group relative flex h-full flex-1 items-end"
                 title={`${point.date}: ${point.value}`}
               >
                 <div
