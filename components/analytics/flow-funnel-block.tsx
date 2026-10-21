@@ -9,7 +9,7 @@ import type { CountedStep } from "@/lib/analytics/flow-funnel";
 interface Funnel {
   flow: { id: string; name: string };
   days: number;
-  comments: { arrived: number; matched: number; dmSent: number };
+  comments: { arrived: number; dmSent: number };
   entered: number;
   fromComment: number;
   fromDirect: number;
@@ -97,16 +97,11 @@ function FunnelBody({ data, flowId }: { data: Funnel; flowId: string }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <Door title="Through a comment">
           <Line label="Commented" value={comments.arrived} />
-          <Line
-            label="Matched a keyword"
-            value={comments.matched}
-            of={comments.arrived}
-          />
           <Line label="Got the DM" value={comments.dmSent} of={comments.arrived} />
-          {comments.arrived > 0 && comments.matched === 0 && (
+          {comments.arrived > 0 && comments.dmSent === 0 && (
             <p className="pt-1 text-xs text-amber-600 dark:text-amber-500">
-              Comments arrived and none matched a rule. Worth reading what they
-              wrote.
+              People commented and none of them got a DM. Worth reading what
+              they wrote.
             </p>
           )}
         </Door>

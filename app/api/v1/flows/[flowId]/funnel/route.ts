@@ -102,20 +102,19 @@ export async function GET(
 
   const triggerIds = (triggersRes.data ?? []).map((t) => t.id);
 
-  // The comment door, counted only against this flow's own rules.
-  let comments = { arrived: 0, matched: 0, dmSent: 0 };
+  // The comment door: how many commented, and how many of them got a DM.
+  // Whether a rule recognised the text in between is a detail of how the
+  // bot works, not a number anyone acts on; what matters is the gap.
+  let comments = { arrived: 0, dmSent: 0 };
   if (triggerIds.length > 0) {
-    const [arrivedRes, matchedRes, dmRes] = await Promise.all([
+    const [arrivedRes, dmRes] = await Promise.all([
+      // Comments are logged per workspace, not per flow, so one that matched
+      // nothing cannot be attributed to a flow. Counted all the same: a
+      // comment nobody's rule caught is the finding.
       supabase
         .from("comment_logs")
         .select("*", { count: "exact", head: true })
         .eq("workspace_id", membership.workspace_id)
-        .gte("created_at", since),
-      supabase
-        .from("comment_logs")
-        .select("*", { count: "exact", head: true })
-        .eq("workspace_id", membership.workspace_id)
-        .in("matched_trigger_id", triggerIds)
         .gte("created_at", since),
       supabase
         .from("comment_logs")
@@ -126,11 +125,7 @@ export async function GET(
         .gte("created_at", since),
     ]);
     comments = {
-      // Comments are logged per workspace, not per flow, so a comment that
-      // matched nothing cannot be attributed to one flow. Counted here all
-      // the same: a comment nobody's rule caught is the finding.
       arrived: arrivedRes.count ?? 0,
-      matched: matchedRes.count ?? 0,
       dmSent: dmRes.count ?? 0,
     };
   }
