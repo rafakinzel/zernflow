@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { FlowFunnelBlock } from "@/components/analytics/flow-funnel-block";
 
 // --- Types ---
 
@@ -581,6 +582,13 @@ export function AnalyticsView({
                 )}
               </div>
             </div>
+
+            {/* The end-to-end funnel for one flow, which is where "are we
+                losing people, and where" is actually answered. The table
+                below it stays for comparing flows side by side. */}
+            <FlowFunnelBlock
+              flows={flowPerformance.map((f) => ({ id: f.id, name: f.name }))}
+            />
 
             {/* Flow performance table */}
             <div className="rounded-xl border border-border bg-card">

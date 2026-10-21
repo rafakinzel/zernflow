@@ -61,6 +61,8 @@ interface SendMessagePanelData {
   waitForReply?: boolean;
   timeout?: number;
   timeoutUnit?: string;
+  isFunnelStep?: boolean;
+  funnelLabel?: string;
   [key: string]: unknown;
 }
 
@@ -189,6 +191,12 @@ export function SendMessagePanel({ data: rawData, onChange, availableVariables }
           Add at least one message to send.
         </p>
       )}
+
+      <FunnelStepControl
+        marked={Boolean(data.isFunnelStep)}
+        label={data.funnelLabel}
+        onChange={(next) => onChange({ ...data, ...next })}
+      />
 
       <PostActionsEditor
         actions={data.postActions ?? []}
@@ -1130,6 +1138,69 @@ function WaitControl({
               ends when the time runs out.
             </p>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Marks this message as a step worth counting in the flow's funnel.
+ *
+ * Which moments matter is a question about the business, so the flow
+ * answers it rather than the report guessing. Marking a handful is the
+ * point: a funnel with a row per node is a list of nodes, not a funnel.
+ */
+function FunnelStepControl({
+  marked,
+  label,
+  onChange,
+}: {
+  marked: boolean;
+  label?: string;
+  onChange: (next: { isFunnelStep: boolean; funnelLabel?: string }) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <label className="flex cursor-pointer items-start gap-2.5">
+        <input
+          type="checkbox"
+          checked={marked}
+          onChange={(e) =>
+            onChange({ isFunnelStep: e.target.checked, funnelLabel: label })
+          }
+          className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+        />
+        <span>
+          <span className="text-sm font-medium">Count as a funnel step</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            Analytics shows how many people reached this message, and how many
+            stopped before it.
+          </span>
+        </span>
+      </label>
+
+      {marked && (
+        <div className="mt-3">
+          <label
+            htmlFor="funnel-label"
+            className="mb-1 block text-xs text-muted-foreground"
+          >
+            Name for the report
+          </label>
+          <input
+            id="funnel-label"
+            type="text"
+            value={label ?? ""}
+            onChange={(e) =>
+              onChange({ isFunnelStep: true, funnelLabel: e.target.value })
+            }
+            placeholder="Saw the offer"
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Left empty, the report uses the first words of the message.
+          </p>
         </div>
       )}
     </div>
