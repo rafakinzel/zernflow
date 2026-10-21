@@ -150,16 +150,18 @@ export default async function AnalyticsPage() {
   }
 
   return (
-    <>
+    // One scroll area for the whole page, with the tabs pinned above it.
+    <div className="flex h-full flex-col">
       <AnalyticsTabs />
 
-      {/* Loads itself rather than holding up the counts below, which come
-          from our own database and should not queue behind Zernio. */}
-      <div className="px-6 pt-6">
-        <PostLeaderboardBlock />
-      </div>
+      <div className="flex-1 overflow-auto">
+        {/* Loads itself rather than holding up the counts below, which come
+            from our own database and should not queue behind Zernio. */}
+        <div className="px-6 pt-6">
+          <PostLeaderboardBlock />
+        </div>
 
-      <AnalyticsView
+        <AnalyticsView
         workspaceId={workspace.id}
         initialData={{
           stats: {
@@ -173,7 +175,8 @@ export default async function AnalyticsPage() {
           contactGrowth,
           messageVolume,
         }}
-      />
-    </>
+        />
+      </div>
+    </div>
   );
 }

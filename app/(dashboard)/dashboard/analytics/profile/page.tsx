@@ -13,12 +13,14 @@ export const metadata = { title: "Profile analytics" };
  */
 export default function ProfileAnalyticsPage() {
   return (
-    <>
+    <div className="flex h-full flex-col">
       <AnalyticsTabs />
 
-      <div className="space-y-4 px-6 pt-6">
-        <InstagramInsightsBlock />
+      <div className="flex-1 overflow-auto">
+        <div className="space-y-4 px-6 py-6">
+          <InstagramInsightsBlock />
+        </div>
       </div>
-    </>
+    </div>
   );
 }

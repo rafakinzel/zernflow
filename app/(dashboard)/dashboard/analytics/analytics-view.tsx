@@ -429,7 +429,10 @@ export function AnalyticsView({
   );
 
   return (
-    <div className="flex h-full flex-col">
+    // No height or scroll of its own: the page around it owns both. Taking
+    // them here made this a scrolling box inside the page, with the tabs and
+    // the post table above it, so the content could not be read to the end.
+    <div className="flex flex-col">
       {/* Header */}
       <div className="border-b border-border px-8 py-6">
         <div className="flex items-center justify-between">
@@ -490,7 +493,7 @@ export function AnalyticsView({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-8">
+      <div className="p-8">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
