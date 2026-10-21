@@ -199,9 +199,11 @@ function MessageVolumeChart({
 
 export function AnalyticsView({
   workspaceId,
+  flows,
   initialData,
 }: {
   workspaceId: string;
+  flows: Array<{ id: string; name: string }>;
   initialData: AnalyticsData;
 }) {
   const [timeRange, setTimeRange] = useState<TimeRange>("30d");
@@ -589,9 +591,7 @@ export function AnalyticsView({
             {/* The end-to-end funnel for one flow, which is where "are we
                 losing people, and where" is actually answered. The table
                 below it stays for comparing flows side by side. */}
-            <FlowFunnelBlock
-              flows={flowPerformance.map((f) => ({ id: f.id, name: f.name }))}
-            />
+            <FlowFunnelBlock flows={flows} />
 
             {/* Flow performance table */}
             <div className="rounded-xl border border-border bg-card">

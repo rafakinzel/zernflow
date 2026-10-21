@@ -57,19 +57,25 @@ export function FlowFunnelBlock({
     <section className="rounded-xl border border-border p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold">From keyword to booked</h2>
-        {flows.length > 1 && (
-          <select
-            aria-label="Flow"
-            value={flowId}
-            onChange={(e) => setFlowId(e.target.value)}
-            className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs"
-          >
-            {flows.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
+        {/* The funnel is always about one flow, so which one is never left
+            implied: a name when there is one, a picker when there are more. */}
+        {flows.length > 1 ? (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Flow
+            <select
+              value={flowId}
+              onChange={(e) => setFlowId(e.target.value)}
+              className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground"
+            >
+              {flows.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span className="text-xs text-muted-foreground">{flows[0]?.name}</span>
         )}
       </div>
 

@@ -114,6 +114,11 @@ export default async function AnalyticsPage() {
     .sort((a, b) => b.starts - a.starts)
     .slice(0, 10);
 
+  const flowsByActivity = [...(flowsListRes.data ?? [])].sort((a, b) => {
+    const diff = (startCounts.get(b.id) ?? 0) - (startCounts.get(a.id) ?? 0);
+    return diff !== 0 ? diff : a.name.localeCompare(b.name);
+  });
+
   // Build daily contact growth
   const growthByDay = new Map<string, number>();
   (contactEvents.data ?? []).forEach((e) => {
@@ -163,6 +168,12 @@ export default async function AnalyticsPage() {
 
         <AnalyticsView
         workspaceId={workspace.id}
+        // Every flow, not only the ones with activity in the window: a flow
+        // published yesterday has no events yet and still has to be
+        // selectable, or the funnel can never be opened on it. Busiest
+        // first, so the funnel opens on the one worth reading rather than
+        // on whichever name sorts earliest.
+        flows={flowsByActivity}
         initialData={{
           stats: {
             totalFlows: flowsRes.count ?? 0,
