@@ -4,9 +4,11 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { executeFlow } from "@/lib/flow-engine/engine";
 import { matchTrigger } from "@/lib/flow-engine/trigger-matcher";
 import { payloadRoutes } from "@/lib/flow-engine/node-stats";
+import { isRestartKeyword } from "@/lib/flow-engine/restart-keyword";
 import { resolveWebhookSecret, verifyWebhookSignature } from "@/lib/zernio-webhook";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { processComment } from "@/lib/comment-processor";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { messagePreview } from "@/lib/message-preview";
 
@@ -280,7 +282,23 @@ async function processMessageEvent(
 
   // ── Flow engine ───────────────────────────────────────────────────────────
 
-  if (!conversation.is_automation_paused) {
+  // A conversation handed to a person stays hands-off, with one exception:
+  // somebody who sends nothing but a trigger keyword is asking for the bot
+  // back, and is usually doing it because they were told to. Without this,
+  // "write #FA here and you'll get the information" was answered with
+  // silence, and the lead who did exactly that was never served.
+  let paused = conversation.is_automation_paused;
+  if (paused && msg.text) {
+    const restarted = await restartFromKeyword(
+      supabase,
+      channel.workspace_id,
+      conversation.id,
+      msg.text
+    );
+    if (restarted) paused = false;
+  }
+
+  if (!paused) {
     const incomingMessage = {
       text: msg.text || undefined,
       postbackPayload: metadata?.postbackPayload || undefined,
@@ -575,4 +593,47 @@ async function handleGlobalKeywords(
   }
 
   return false;
+}
+
+/**
+ * Clears a human takeover when the contact sends nothing but a keyword.
+ *
+ * Deliberately strict (see `isRestartKeyword`): a paused conversation has a
+ * person in it, and the trigger matcher's own "contains" rule would restart
+ * a flow in the middle of their sentence. Only a message that is the whole
+ * keyword counts.
+ *
+ * Returns whether the pause was lifted, so the caller runs the flow in the
+ * same delivery rather than making the contact send it twice.
+ */
+async function restartFromKeyword(
+  supabase: SupabaseClient<Database>,
+  workspaceId: string,
+  conversationId: string,
+  text: string
+): Promise<boolean> {
+  const { data: triggers } = await supabase
+    .from("triggers")
+    .select("config, flows!inner(workspace_id, status)")
+    .eq("type", "keyword")
+    .eq("is_active", true)
+    .eq("flows.workspace_id", workspaceId)
+    .eq("flows.status", "published");
+
+  const keywords = (triggers ?? []).flatMap((t) => {
+    const config = t.config as { keywords?: Array<{ value?: string } | string> } | null;
+    return config?.keywords ?? [];
+  });
+
+  if (!isRestartKeyword(text, keywords)) return false;
+
+  await supabase
+    .from("conversations")
+    .update({ is_automation_paused: false })
+    .eq("id", conversationId);
+
+  console.info(
+    `[webhook] conversation ${conversationId} handed back to the bot by a keyword`
+  );
+  return true;
 }
