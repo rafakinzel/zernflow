@@ -36,6 +36,12 @@ function toSendBody(accountId: string, message: OutboundMessage): SendBody {
   if (message.quickReplies?.length) body.quickReplies = message.quickReplies;
   if (message.template) body.template = message.template;
   if (message.replyMarkup) body.replyMarkup = message.replyMarkup;
+  if (message.humanAgent) {
+    // The pair is required together: the tag is only read when the type
+    // says a tag is being used.
+    body.messagingType = "MESSAGE_TAG";
+    body.messageTag = "HUMAN_AGENT";
+  }
   return body as SendBody;
 }
 

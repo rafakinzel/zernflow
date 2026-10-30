@@ -24,6 +24,15 @@ export interface OutboundMessage {
   quickReplies?: unknown[];
   template?: unknown;
   replyMarkup?: unknown;
+  /**
+   * Send as a human agent's reply, which Meta allows for seven days from the
+   * person's last message instead of the usual twenty-four hours.
+   *
+   * Only ever true for a message a person typed in the inbox: the tag says
+   * a human is answering, and using it for anything automated is a policy
+   * breach. Instagram accepts no other tag.
+   */
+  humanAgent?: boolean;
 }
 
 export interface SendMessageResult {

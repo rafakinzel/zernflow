@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createMessagingProvider } from "@/lib/messaging";
 import { messagePreview } from "@/lib/message-preview";
+import { messagingWindow } from "@/lib/flow-engine/messaging-window";
 
 /**
  * GET /api/v1/messages?conversationId=...
@@ -137,13 +138,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "API key not configured" }, { status: 400 });
   }
 
+  // Past the 24-hour window the send is refused unless it is tagged as a
+  // human agent's reply, which Meta allows for seven days. This route is a
+  // person typing in the inbox, which is exactly what that tag is for.
+  //
+  // Without it a lead who went quiet for a day could not be answered at all:
+  // the message simply failed, and the inbox showed no reason why.
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("last_interaction_at")
+    .eq("id", conversation.contact_id)
+    .maybeSingle();
+
+  const humanAgent = !messagingWindow(contact?.last_interaction_at ?? null).open;
+
   // Send via Zernio SDK — Zernio stores the message, no local insert needed
   try {
     const messaging = createMessagingProvider(workspace.late_api_key_encrypted);
     const { messageId } = await messaging.sendMessage({
       accountId: channel.late_account_id,
       conversationId: conversation.late_conversation_id,
-      message: { text },
+      message: { text, humanAgent },
     });
 
     // Update conversation's last message info (app-specific metadata)
