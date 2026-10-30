@@ -7,14 +7,15 @@
  * information" wrote it and got silence: the keyword never reached the
  * matcher. It cost a real lead who had just said she wanted to hire.
  *
- * The hash is what carries the intent. Nobody types "#FA" by accident, so
- * it counts anywhere in the message, with whatever else they wrote around
- * it: "oi, me manda o #FA por favor" is the same request as "#FA" alone.
+ * Two ways to ask, and the hash is what separates them.
  *
- * A keyword without a hash is a different matter. "rd" or "fa" are ordinary
- * letters that fall inside ordinary words and sentences, and a paused
- * conversation has a person in it who should not be talked over, so those
- * restart only when the message is nothing else.
+ * A message that is nothing but the keyword is a request whether or not it
+ * carries the hash: somebody who replies "fa" or "#fa" and nothing else
+ * wants the flow, and there is no sentence around it to misread.
+ *
+ * Inside a sentence only the hash counts. "oi, me manda o #FA por favor" is
+ * the same request; "me explica melhor esse fa aí" is somebody talking to a
+ * person, and starting a flow over them would be worse than staying quiet.
  */
 
 /** Lowercase, unaccented, trimmed, with punctuation and emoji removed. */
@@ -55,9 +56,10 @@ function mentionsHashtag(text: string, tag: string): boolean {
 /**
  * True when the message asks for this flow again.
  *
- * A hashtag keyword counts wherever it appears; a bare one only when it is
- * the whole message. Works the same on a DM, a comment or a story reply,
- * because the request means the same thing on all of them.
+ * The whole message being the keyword counts, with or without the hash;
+ * inside a longer message only the hashtag does. Works the same on a DM, a
+ * comment or a story reply, because the request means the same on all of
+ * them.
  */
 export function isRestartKeyword(
   text: string | null | undefined,
@@ -76,7 +78,9 @@ export function isRestartKeyword(
     // saved would restart on any message at all.
     if (!wanted) return false;
 
-    if (raw.startsWith("#")) return mentionsHashtag(text, wanted);
-    return said === wanted;
+    // The whole message, hash or no hash.
+    if (said === wanted) return true;
+    // Inside a longer message, only the hashtag.
+    return raw.startsWith("#") && mentionsHashtag(text, wanted);
   });
 }

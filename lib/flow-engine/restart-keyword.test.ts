@@ -17,9 +17,11 @@ describe("isRestartKeyword", () => {
     // What gia_vndrlnd sent at 14:42 after being told to.
     expect(isRestartKeyword("#FA", faKeywords)).toBe(true);
     expect(isRestartKeyword("#fa", faKeywords)).toBe(true);
-    // Without the hash it does not start the flow in an ordinary
-    // conversation either: the trigger looks for "#fa".
-    expect(isRestartKeyword("fa", faKeywords)).toBe(false);
+    // Alone, it counts with or without the hash: there is no sentence
+    // around it to misread.
+    expect(isRestartKeyword("fa", faKeywords)).toBe(true);
+    expect(isRestartKeyword("FA", faKeywords)).toBe(true);
+    expect(isRestartKeyword(" fa ", faKeywords)).toBe(true);
     expect(isRestartKeyword("  #FA  ", faKeywords)).toBe(true);
     expect(isRestartKeyword("#RD", rdKeywords)).toBe(true);
   });
@@ -41,13 +43,18 @@ describe("isRestartKeyword", () => {
     expect(isRestartKeyword("#fas", faKeywords)).toBe(false);
   });
 
-  it("keeps a keyword with no hash to the whole message", () => {
-    // "rd" and "fa" are ordinary letters inside ordinary words, and a paused
-    // conversation has a person in it who must not be talked over.
-    expect(isRestartKeyword("rd", rdKeywords)).toBe(true);
+  it("needs the hash once there is a sentence around it", () => {
+    // Somebody talking to a person, not asking for the flow. Starting one
+    // over them would be worse than staying quiet.
     expect(isRestartKeyword("me explica melhor esse FA aí", faKeywords)).toBe(false);
     expect(isRestartKeyword("vou verificar o rd depois", rdKeywords)).toBe(false);
     expect(isRestartKeyword("quando puder me diz", rdKeywords)).toBe(false);
+    expect(isRestartKeyword("isso é fabuloso", faKeywords)).toBe(false);
+  });
+
+  it("takes a keyword that never had a hash, alone", () => {
+    expect(isRestartKeyword("rd", rdKeywords)).toBe(true);
+    expect(isRestartKeyword("RD", rdKeywords)).toBe(true);
   });
 
   it("does not restart on an empty or absent message", () => {
