@@ -176,6 +176,18 @@ export class ZernioProvider implements MessagingProvider {
     return { conversations, nextCursor };
   }
 
+  /**
+   * Zernio says `outgoing`, not `outbound`.
+   *
+   * The old comparison was against "outbound", which this endpoint never
+   * sends, so every message in every thread came back marked as if the
+   * contact had written it: the inbox showed our own replies as theirs, and
+   * a backfill built on it filed 3,604 of our messages as incoming.
+   */
+  private static directionOf(raw: unknown): "inbound" | "outbound" {
+    return raw === "outgoing" || raw === "outbound" ? "outbound" : "inbound";
+  }
+
   async getConversationMessages({
     accountId,
     conversationId,
@@ -183,25 +195,46 @@ export class ZernioProvider implements MessagingProvider {
     accountId: string;
     conversationId: string;
   }): Promise<ProviderMessage[]> {
-    const res = await this.client.messages.getInboxConversationMessages({
-      path: { conversationId },
-      query: { accountId },
-    });
+    const all: ProviderMessage[] = [];
+    let cursor: string | undefined;
 
-    // This endpoint answers `{ success, messages }`, unlike every other one.
-    const rows =
-      (res.data as { messages?: unknown[] })?.messages ??
-      (res.data as { data?: unknown[] })?.data ??
-      [];
+    // Paginated, 100 a page. Reading only the first page was invisible while
+    // the inbox showed one recent thread at a time, and silently truncated
+    // every thread longer than that once anything started counting them.
+    // Bounded so a provider that keeps handing back a cursor cannot spin.
+    for (let page = 0; page < 50; page++) {
+      const res = await this.client.messages.getInboxConversationMessages({
+        path: { conversationId },
+        query: { accountId, limit: 100, ...(cursor ? { cursor } : {}) },
+      });
 
-    return (rows as Array<Record<string, any>>).map((m) => ({
-      id: m.id ?? null,
-      direction: m.direction === "outbound" ? "outbound" : "inbound",
-      text: m.text ?? m.message ?? null,
-      attachments: m.attachments?.length ? m.attachments : null,
-      platformMessageId: m.platformMessageId ?? null,
-      createdAt: m.sentAt ?? m.createdAt ?? null,
-    }));
+      // This endpoint answers `{ success, messages }`, unlike every other one.
+      const data = res.data as {
+        messages?: unknown[];
+        data?: unknown[];
+        pagination?: { hasMore?: boolean; nextCursor?: string | null };
+      } | null;
+
+      const rows = (data?.messages ?? data?.data ?? []) as Array<Record<string, any>>;
+
+      for (const m of rows) {
+        all.push({
+          id: m.id ?? null,
+          direction: ZernioProvider.directionOf(m.direction),
+          text: m.message ?? m.text ?? null,
+          attachments: m.attachments?.length ? m.attachments : null,
+          platformMessageId: m.platformMessageId ?? null,
+          createdAt: m.createdAt ?? m.sentAt ?? null,
+        });
+      }
+
+      // hasMore is the stop signal; a cursor without it means done.
+      const more = data?.pagination?.hasMore && data.pagination.nextCursor;
+      if (!more) break;
+      cursor = data.pagination!.nextCursor!;
+    }
+
+    return all;
   }
 }
 

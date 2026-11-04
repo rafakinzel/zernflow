@@ -218,4 +218,94 @@ describe("ZernioProvider.getConversationMessages", () => {
       },
     ]);
   });
+
+  it("reads Zernio's own words for direction, which are incoming and outgoing", async () => {
+    // The old comparison was against "outbound", a value this endpoint never
+    // sends, so every message came back as if the contact had written it.
+    const get = vi.fn().mockResolvedValue({
+      data: {
+        messages: [
+          { id: "m-1", direction: "incoming", message: "quero saber mais" },
+          { id: "m-2", direction: "outgoing", message: "Posso te mostrar como funciona?" },
+        ],
+      },
+    });
+    const provider = new ZernioProvider(
+      fakeClient({ messages: { getInboxConversationMessages: get } })
+    );
+
+    const res = await provider.getConversationMessages({
+      accountId: "acc-1",
+      conversationId: "conv-1",
+    });
+
+    expect(res.map((m) => m.direction)).toEqual(["inbound", "outbound"]);
+  });
+
+  it("takes the text from `message`, which is the field this endpoint fills", async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: { messages: [{ id: "m-1", direction: "incoming", message: "oi" }] },
+    });
+    const provider = new ZernioProvider(
+      fakeClient({ messages: { getInboxConversationMessages: get } })
+    );
+
+    const res = await provider.getConversationMessages({
+      accountId: "acc-1",
+      conversationId: "conv-1",
+    });
+
+    expect(res[0].text).toBe("oi");
+  });
+
+  it("walks every page of a long thread", async () => {
+    // Reading only the first page silently truncated every thread past 100
+    // messages, which is invisible until something starts counting them.
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: {
+          messages: [{ id: "m-1", direction: "incoming", message: "um" }],
+          pagination: { hasMore: true, nextCursor: "cur-2" },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          messages: [{ id: "m-2", direction: "outgoing", message: "dois" }],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+      });
+
+    const provider = new ZernioProvider(
+      fakeClient({ messages: { getInboxConversationMessages: get } })
+    );
+
+    const res = await provider.getConversationMessages({
+      accountId: "acc-1",
+      conversationId: "conv-1",
+    });
+
+    expect(res.map((m) => m.id)).toEqual(["m-1", "m-2"]);
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(get.mock.calls[1][0].query.cursor).toBe("cur-2");
+  });
+
+  it("stops when a cursor comes back without hasMore", async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: {
+        messages: [{ id: "m-1", direction: "incoming", message: "um" }],
+        pagination: { hasMore: false, nextCursor: "cur-2" },
+      },
+    });
+    const provider = new ZernioProvider(
+      fakeClient({ messages: { getInboxConversationMessages: get } })
+    );
+
+    await provider.getConversationMessages({
+      accountId: "acc-1",
+      conversationId: "conv-1",
+    });
+
+    expect(get).toHaveBeenCalledTimes(1);
+  });
 });
