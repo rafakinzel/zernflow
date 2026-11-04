@@ -58,3 +58,46 @@ Meta allows a message within 24 hours of the person's last action. Waits are
 capped at 20h in the builder (`SAFE_WAIT_HOURS`) and the engine checks the
 window again before sending (`messaging-window.ts`), recording a
 `message_skipped_window` event rather than sending into a closed window.
+
+## Reading from Zernio
+
+Two things about this API have already cost real leads, and neither shows up
+as an error.
+
+Direction is `incoming` and `outgoing`, never `inbound`/`outbound`. A
+comparison against our own vocabulary silently marks every message in every
+thread as if the contact had written it. `lib/messaging/zernio-provider.ts`
+translates; nothing else should compare raw direction values.
+
+Threads are paginated, 100 a page, with `pagination.hasMore` and
+`pagination.nextCursor`. `hasMore` is the stop signal: a cursor without it
+means done. Reading one page looks fine until something counts.
+
+The inbox reads threads live from Zernio. The local `messages` table exists
+to count and classify across conversations, not to render one. Inbound rows
+come from the webhook; a reply typed into the Instagram app reaches us only
+through a backfill, never through the engine.
+
+Zernio rate-limits. A rate limit says nothing about the record it lands on,
+so a loop must stop and resume rather than mark it visited and move past it.
+
+## Upserting into messages
+
+`platform_message_id` carries a plain unique index, and the upsert target
+depends on it staying plain: Postgres will not infer a partial index for
+`on conflict (col)` unless the statement repeats the predicate, which
+PostgREST cannot send. Nulls are distinct, so rows without a platform id do
+not collide.
+
+`messages` has a select policy and an insert policy and no update policy. An
+upsert that updates on conflict is refused through a user session; the
+backfill route settles authorisation on the caller's session first and then
+writes with the service key.
+
+## Telling a waiting lead from one who left
+
+Who spoke last is the signal. The person spoke and nothing went out after:
+pending. We spoke last and they did not come back: abandoned. A session
+waiting with a job scheduled is neither. Both directions must be in the
+table for this to mean anything, which is why the backfill brings back our
+own replies and not only theirs.
