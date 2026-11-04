@@ -122,15 +122,16 @@ export async function POST(request: NextRequest) {
         conversationId: conv.late_conversation_id,
       });
 
-      // No outbound boundary on purpose. The engine has been storing its own
-      // sends since 20 Oct, but a reply typed into the Instagram app is not
-      // among them, so a boundary there would skip exactly the hand-answered
-      // conversations this is for. The engine's rows carry no platform id,
-      // so the overlap arrives as duplicates and is reconciled once in SQL.
+      // No boundary in either direction. The boundaries existed to stop a
+      // second run filing a message twice, which the upsert below now
+      // handles on its own by updating the row it finds. Dropping them also
+      // makes the run corrective rather than additive: the first import ran
+      // against a provider that labelled every message inbound, and a
+      // boundary would now treat those wrong rows as already done.
       const { rows, skipped } = planBackfill({
         conversationId: conv.id,
         messages: thread,
-        earliestStoredInboundAt: earliest?.created_at ?? null,
+        earliestStoredInboundAt: null,
         earliestStoredOutboundAt: null,
       });
 
@@ -142,8 +143,11 @@ export async function POST(request: NextRequest) {
         const { error: insertError, count } = await supabase
           .from("messages")
           .upsert(rows, {
+            // Update rather than ignore, so a row already here is corrected
+            // instead of left as it was. Nothing is deleted: the key is
+            // Zernio's own message id, so a second run rewrites the same row.
             onConflict: "platform_message_id",
-            ignoreDuplicates: true,
+            ignoreDuplicates: false,
             count: "exact",
           });
 
