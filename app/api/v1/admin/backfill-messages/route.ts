@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { createMessagingProvider } from "@/lib/messaging";
 import { planBackfill } from "@/lib/inbox/backfill-messages";
 
@@ -16,9 +16,15 @@ import { planBackfill } from "@/lib/inbox/backfill-messages";
  *
  * Resumable on purpose. One Zernio call per conversation against a few
  * hundred conversations will outlast any serverless request, so the run works
- * to a time budget, reports what is left, and is safe to call again: the
- * boundary in `planBackfill` plus the unique index on platform_message_id
- * mean a second run over the same thread files nothing.
+ * to a time budget, reports what is left, and is safe to call again: the key
+ * is Zernio's own message id, so a second pass rewrites the same rows.
+ *
+ * Who may run it is settled first, on the caller's own session, and the work
+ * then runs with the service key. `messages` has a select and an insert
+ * policy and no update policy, so correcting a row through the caller's
+ * session is refused; widening the policy for every member to fix a one-off
+ * import would be the wrong trade. The conversations this touches are still
+ * limited to the workspace the caller belongs to.
  */
 
 /** Leaves room to answer before the platform cuts the request off. */
@@ -47,7 +53,11 @@ export async function POST(request: NextRequest) {
 
   const workspaceId = membership.workspace_id;
 
-  const { data: workspace } = await supabase
+  // Authorisation is settled above, on the caller's own session. Everything
+  // below runs with the service key, scoped to that workspace.
+  const db = await createServiceClient();
+
+  const { data: workspace } = await db
     .from("workspaces")
     .select("late_api_key_encrypted")
     .eq("id", workspaceId)
@@ -64,7 +74,7 @@ export async function POST(request: NextRequest) {
     | string
     | undefined;
 
-  let query = supabase
+  let query = db
     .from("conversations")
     .select("id, late_conversation_id, channels(late_account_id)")
     .eq("workspace_id", workspaceId)
@@ -108,7 +118,7 @@ export async function POST(request: NextRequest) {
     try {
       // Where the webhook took over for this thread. Anything from here on
       // is already ours, so the backfill stops short of it.
-      const { data: earliest } = await supabase
+      const { data: earliest } = await db
         .from("messages")
         .select("created_at")
         .eq("conversation_id", conv.id)
@@ -140,7 +150,7 @@ export async function POST(request: NextRequest) {
       totals.noDate += skipped.noDate;
 
       if (rows.length > 0) {
-        const { error: insertError, count } = await supabase
+        const { error: insertError, count } = await db
           .from("messages")
           .upsert(rows, {
             // Update rather than ignore, so a row already here is corrected
