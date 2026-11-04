@@ -82,6 +82,7 @@ export async function POST(request: NextRequest) {
   const messaging = createMessagingProvider(workspace.late_api_key_encrypted);
 
   let lastVisitedId: string | null = null;
+  let rateLimited: string | null = null;
 
   const totals = {
     conversations: conversations?.length ?? 0,
@@ -149,14 +150,23 @@ export async function POST(request: NextRequest) {
       totals.visited++;
       lastVisitedId = conv.id;
     } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+
+      // Zernio rate-limits, and a rate limit says nothing about this thread:
+      // it says to come back later. Counting it as visited would carry the
+      // cursor past a conversation that was never read, and the run would
+      // report itself done having quietly skipped everything it hit the
+      // limit on.
+      if (/rate limit/i.test(reason)) {
+        rateLimited = reason;
+        break;
+      }
+
       totals.visited++;
-      // Counted as visited so a thread Zernio keeps refusing cannot stall the
-      // run forever; it is named in `failures` instead.
+      // A thread Zernio refuses for its own reasons must not stall the run,
+      // so the cursor does move past it; it is named in `failures` instead.
       lastVisitedId = conv.id;
       totals.failed++;
-      const reason = error instanceof Error ? error.message : String(error);
-      // Named rather than counted: a thread that keeps failing is a finding,
-      // not noise to retry forever.
       if (failures.length < 20) failures.push({ conversationId: conv.id, reason });
       console.error(`[backfill] conversation ${conv.id} failed:`, reason);
     }
@@ -165,7 +175,8 @@ export async function POST(request: NextRequest) {
   const remaining = Math.max(totals.conversations - totals.visited, 0);
 
   return NextResponse.json({
-    done: remaining === 0,
+    done: remaining === 0 && !rateLimited,
+    rateLimited,
     remaining,
     // Hand this back as `cursor` on the next call to carry on from here.
     cursor: lastVisitedId,
