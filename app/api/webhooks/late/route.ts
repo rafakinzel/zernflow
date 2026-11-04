@@ -11,6 +11,7 @@ import { processComment } from "@/lib/comment-processor";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { messagePreview } from "@/lib/message-preview";
+import { inboundMessageRow } from "@/lib/inbox/inbound-message";
 
 // ── Zernio API webhook payload ───────────────────────────────────────────────
 
@@ -278,7 +279,37 @@ async function processMessageEvent(
       .then(() => {});
   }
 
-  // Messages are stored by Zernio (source of truth) — no local insert needed.
+  // ── Store what they said ─────────────────────────────────────────────────
+
+  // Zernio stays the source of truth for reading one thread, and the inbox
+  // still fetches from it. This row is the local record: without it the
+  // database held only our own sends, and nothing could tell a lead who is
+  // waiting on us from one who simply stopped replying.
+  //
+  // `ignoreDuplicates` against the partial unique index on
+  // platform_message_id, because Zernio redelivers a webhook we were slow to
+  // answer and the same message must not be filed twice.
+  const { error: storeError } = await supabase
+    .from("messages")
+    .upsert(
+      inboundMessageRow({
+        conversationId: conversation.id,
+        message: {
+          text: msg.text,
+          platformMessageId: msg.platformMessageId,
+          attachments: msg.attachments,
+          sentAt: msg.sentAt,
+        },
+        metadata: payload.metadata,
+      }),
+      { onConflict: "platform_message_id", ignoreDuplicates: true }
+    );
+
+  // Never fatal: the flow answering the person matters more than the record
+  // of them having spoken, so a failure here is logged and the run continues.
+  if (storeError) {
+    console.error("[webhook] failed to store inbound message:", storeError);
+  }
 
   // ── Flow engine ───────────────────────────────────────────────────────────
 
