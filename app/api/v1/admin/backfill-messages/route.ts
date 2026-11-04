@@ -88,7 +88,6 @@ export async function POST(request: NextRequest) {
     conversations: conversations?.length ?? 0,
     visited: 0,
     inserted: 0,
-    outbound: 0,
     alreadyCovered: 0,
     noKey: 0,
     noDate: 0,
@@ -123,13 +122,18 @@ export async function POST(request: NextRequest) {
         conversationId: conv.late_conversation_id,
       });
 
+      // No outbound boundary on purpose. The engine has been storing its own
+      // sends since 20 Oct, but a reply typed into the Instagram app is not
+      // among them, so a boundary there would skip exactly the hand-answered
+      // conversations this is for. The engine's rows carry no platform id,
+      // so the overlap arrives as duplicates and is reconciled once in SQL.
       const { rows, skipped } = planBackfill({
         conversationId: conv.id,
         messages: thread,
         earliestStoredInboundAt: earliest?.created_at ?? null,
+        earliestStoredOutboundAt: null,
       });
 
-      totals.outbound += skipped.outbound;
       totals.alreadyCovered += skipped.alreadyCovered;
       totals.noKey += skipped.noKey;
       totals.noDate += skipped.noDate;

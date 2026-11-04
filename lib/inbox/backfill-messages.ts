@@ -6,16 +6,19 @@
  * only in Zernio, and the inbox reads it live, so none of it is countable
  * here. This decides what to copy across.
  *
- * Two rules, both there to avoid filing the same message twice:
+ * Both directions, because the question this is for is who spoke last. A
+ * reply Thiago typed into the Instagram app himself never passes through the
+ * flow engine, so leaving outbound behind would show every hand-answered
+ * lead as still waiting: the exact mistake this is meant to end.
  *
- * Inbound only. Our own sends are already stored by the flow engine, and
- * those rows carry no platform id, so nothing would stop a second copy from
- * landing beside each one.
+ * Each direction stops at the first row the conversation already holds in
+ * that direction, which marks where our own recording took over. Without
+ * that boundary the run would lean entirely on the unique index, and Zernio
+ * does not always give a platform id to lean on.
  *
- * Older than the first inbound row the conversation already has. That row
- * marks the moment the webhook took over for this thread; anything after it
- * is already accounted for. Without the boundary we would lean entirely on
- * the unique index, and Zernio does not always give a platform id to lean on.
+ * The engine's own sends carry no platform id, so the rows imported for the
+ * period it was already covering are duplicates of them. They are reconciled
+ * once, in SQL, rather than guessed at here.
  */
 
 import {
@@ -56,43 +59,49 @@ function asAttachments(value: unknown[] | null | undefined): InboundAttachment[]
   return kept.length > 0 ? kept : null;
 }
 
+export type BackfillRow = Omit<InboundMessageRow, "direction"> & {
+  direction: "inbound" | "outbound";
+};
+
 export interface BackfillPlan {
-  rows: InboundMessageRow[];
+  rows: BackfillRow[];
   /** Seen but left alone, and why, so a run can be read rather than trusted. */
   skipped: {
-    outbound: number;
     alreadyCovered: number;
     noKey: number;
     noDate: number;
   };
 }
 
+function boundaryOf(at: string | null): number | null {
+  if (!at) return null;
+  const t = new Date(at).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
 /**
  * Builds the rows to insert for one conversation.
  *
- * `earliestStoredInboundAt` is the created_at of the oldest inbound row this
- * conversation already holds, or null when it holds none.
+ * The two `earliestStored*At` values are the created_at of the oldest row the
+ * conversation already holds in each direction, or null when it holds none.
  */
 export function planBackfill(params: {
   conversationId: string;
   messages: ProviderThreadMessage[];
   earliestStoredInboundAt: string | null;
+  earliestStoredOutboundAt?: string | null;
 }): BackfillPlan {
   const { conversationId, messages, earliestStoredInboundAt } = params;
 
-  const boundary = earliestStoredInboundAt
-    ? new Date(earliestStoredInboundAt).getTime()
-    : null;
+  const boundary = {
+    inbound: boundaryOf(earliestStoredInboundAt),
+    outbound: boundaryOf(params.earliestStoredOutboundAt ?? null),
+  };
 
-  const rows: InboundMessageRow[] = [];
-  const skipped = { outbound: 0, alreadyCovered: 0, noKey: 0, noDate: 0 };
+  const rows: BackfillRow[] = [];
+  const skipped = { alreadyCovered: 0, noKey: 0, noDate: 0 };
 
   for (const m of messages) {
-    if (m.direction !== "inbound") {
-      skipped.outbound++;
-      continue;
-    }
-
     // No date means no way to place it against the boundary, and a message
     // stamped "now" would sort as if it had just arrived.
     const at = m.createdAt ? new Date(m.createdAt).getTime() : NaN;
@@ -101,12 +110,13 @@ export function planBackfill(params: {
       continue;
     }
 
-    if (boundary !== null && at >= boundary) {
+    const edge = boundary[m.direction];
+    if (edge !== null && at >= edge) {
       skipped.alreadyCovered++;
       continue;
     }
 
-    // The unique index is partial: a row with no key is not protected from a
+    // A row with no key is not protected by the unique index against a
     // second run, so it is better left out than filed twice.
     const key = m.platformMessageId || m.id;
     if (!key) {
@@ -114,8 +124,8 @@ export function planBackfill(params: {
       continue;
     }
 
-    rows.push(
-      inboundMessageRow({
+    rows.push({
+      ...inboundMessageRow({
         conversationId,
         message: {
           text: m.text,
@@ -123,8 +133,9 @@ export function planBackfill(params: {
           attachments: asAttachments(m.attachments),
           sentAt: m.createdAt,
         },
-      })
-    );
+      }),
+      direction: m.direction,
+    });
   }
 
   return { rows, skipped };

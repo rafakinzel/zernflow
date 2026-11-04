@@ -31,17 +31,38 @@ describe("planBackfill", () => {
     });
   });
 
-  it("leaves our own sends alone", () => {
-    // They are already stored by the flow engine, and carry no platform id,
-    // so nothing would stop a second copy landing beside each one.
-    const { rows, skipped } = planBackfill({
+  it("brings back our replies too, so who spoke last can be read", () => {
+    // A reply typed into the Instagram app never passes through the flow
+    // engine. Leaving those out showed every hand-answered lead as waiting.
+    const { rows } = planBackfill({
       conversationId: "c1",
-      messages: [msg({ direction: "outbound" }), msg()],
+      messages: [
+        msg({ id: "a", platformMessageId: "ig-a", direction: "inbound" }),
+        msg({ id: "b", platformMessageId: "ig-b", direction: "outbound" }),
+      ],
       earliestStoredInboundAt: null,
     });
 
-    expect(rows).toHaveLength(1);
-    expect(skipped.outbound).toBe(1);
+    expect(rows.map((r) => r.direction)).toEqual(["inbound", "outbound"]);
+  });
+
+  it("holds each direction to its own boundary", () => {
+    const { rows, skipped } = planBackfill({
+      conversationId: "c1",
+      messages: [
+        msg({ id: "in-old", platformMessageId: "ig-1", createdAt: "2026-10-01T00:00:00.000Z" }),
+        msg({ id: "in-new", platformMessageId: "ig-2", createdAt: "2026-11-04T00:00:00.000Z" }),
+        msg({ id: "out-old", platformMessageId: "ig-3", direction: "outbound", createdAt: "2026-10-01T00:00:00.000Z" }),
+        msg({ id: "out-new", platformMessageId: "ig-4", direction: "outbound", createdAt: "2026-10-25T00:00:00.000Z" }),
+      ],
+      earliestStoredInboundAt: "2026-11-04T00:00:00.000Z",
+      earliestStoredOutboundAt: "2026-10-20T00:00:00.000Z",
+    });
+
+    // One kept per direction: the inbound before 4 Nov, the outbound before
+    // 20 Oct. The other two are already ours.
+    expect(rows.map((r) => r.platform_message_id).sort()).toEqual(["ig-1", "ig-3"]);
+    expect(skipped.alreadyCovered).toBe(2);
   });
 
   it("stops at the point the webhook took over", () => {
@@ -144,6 +165,6 @@ describe("planBackfill", () => {
       earliestStoredInboundAt: null,
     });
     expect(rows).toEqual([]);
-    expect(skipped).toEqual({ outbound: 0, alreadyCovered: 0, noKey: 0, noDate: 0 });
+    expect(skipped).toEqual({ alreadyCovered: 0, noKey: 0, noDate: 0 });
   });
 });
