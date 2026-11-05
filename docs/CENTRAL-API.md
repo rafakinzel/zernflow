@@ -34,6 +34,68 @@ acrescente `-H "Authorization: Bearer $CENTRAL_AGENT_KEY"` em cada chamada.
 Nos exemplos, `BASE` é a variável de ambiente `$BORRELLICHAT_URL`
 (`https://bot.thiagoborrelli.com`).
 
+## 0. O mapa (leia antes de tudo)
+
+```bash
+curl -s "$BASE/api/v1/central/mapa"
+```
+
+Só leitura. Todos os flows do workspace, os que estão no ar primeiro:
+
+```json
+{
+  "geradoEm": "…",
+  "flows": [
+    {
+      "id": "…", "nome": "Financial Advice", "status": "published", "noAr": true,
+      "criadoPelaCentral": false,
+      "gatilhos": [{ "tipo": "comment_keyword", "ativo": true, "palavras": [{ "value": "FA", "matchType": "contains" }] }],
+      "passos": [
+        { "tipo": "trigger", "resumo": "Começa com comentário: FA (contains)" },
+        { "tipo": "sendMessage", "resumo": "Manda a mensagem: \"Oi! …\" botões: Agendar → https://…" },
+        { "tipo": "addTag", "resumo": "Põe a tag \"lead-fa\"" }
+      ],
+      "levaPara": [], "convidaPara": [], "links": ["https://…"]
+    }
+  ],
+  "ligacoes": [{ "de": "…", "para": "…", "como": "vai_para_flow" }],
+  "palavras": [ "…a mesma lista da rota 1…" ]
+}
+```
+
+- `passos`: cada nó em português, na ordem em que a pessoa passa por eles.
+- `levaPara`: flows para onde este leva com o passo "ir para outro flow".
+- `convidaPara`: flows cuja palavra de direct a mensagem deste convida a mandar (`#FA` no texto).
+- `ligacoes`: as duas coisas acima, como lista de arestas entre flows.
+
+Como a ferramenta funciona e as regras de ouro: `docs/CENTRAL-COMO-FUNCIONA.md`.
+
+## 0b. Checar uma palavra antes de criar
+
+```bash
+curl -s -X POST "$BASE/api/v1/central/flows/checar" \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "FAMILIA", "levaPara": "FA"}'
+```
+
+Não grava nada. Resposta:
+
+```json
+{
+  "palavra": "FAMILIA",
+  "podeCriar": false,
+  "conflitos": [{ "palavra": "FA", "flowNome": "Financial Advice", "noAr": true,
+                  "motivo": "o comentário \"familia\" também dispararia o flow \"Financial Advice\"", "exemplo": "familia" }],
+  "avisos": [],
+  "levaPara": { "palavra": "#FA", "flowId": "…", "flowNome": "FA no direct" }
+}
+```
+
+O teste usa a regra de comparação do próprio motor, nos dois sentidos: a
+palavra nova não pode ser pega por uma existente e não pode pegar comentários
+de uma existente. Palavra igual a uma de direct vira só `aviso`.
+`levaPara` com `erro` quando a palavra não é de direct ou o flow não está no ar.
+
 ## 1. Quais palavras-chave já existem
 
 ```bash
@@ -101,6 +163,7 @@ Campos:
 | `pdfUrl` | sim | link `https` do PDF (normalmente o `publicUrl` da rota 3) |
 | `name` | não | nome do flow; padrão `Central TB · <palavra>` |
 | `commentReplies` | não | respostas públicas embaixo do comentário, uma sorteada por vez |
+| `levaPara` | não | palavra de direct de um flow no ar para onde a mensagem convida a pessoa (ex.: `FA`); a mensagem precisa conter `#FA` |
 
 Qualquer outro campo é ignorado (mandar `status`, `is_active` ou `matchType`
 não muda nada).
@@ -133,8 +196,9 @@ Resposta `201`:
 ```
 
 Erros: `400` (campo faltando, link não https, mensagem acima de 1000
-caracteres com o link), `409` se a palavra já tem gatilho em qualquer flow,
-com `existing` dizendo qual.
+caracteres com o link, `levaPara` inválido ou mensagem sem o convite), `409`
+se a palavra já tem gatilho ou conflita com uma existente (`conflitos` diz
+qual flow e um exemplo de comentário).
 
 O que é criado: um flow `draft` com a descrição "Criado pela equipe da Central
 TB, esperando a Rafa", e o mesmo desenho que o construtor faz à mão — um nó

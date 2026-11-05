@@ -26,6 +26,11 @@ export interface CommentToDmInput {
   name?: string;
   /** Public replies under the comment, one picked at random per comment. */
   commentReplies?: string[];
+  /**
+   * The DM keyword of a live flow this one invites the person on to (e.g. "FA").
+   * Checked, never wired: the message must invite them to send it.
+   */
+  levaPara?: string;
 }
 
 export interface CommentToDmFlow {
