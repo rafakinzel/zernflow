@@ -13,7 +13,7 @@ import { InputError } from "@/lib/central-agent/flow-template";
  * builder, which is what puts it on the air.
  *
  * Only the fields below are read. Anything else in the body (a `status`, an
- * `is_active`) is ignored, not honoured: there is no way to ask this route
+ * `is_active`, a `matchType`) is ignored, not honoured: there is no way to ask this route
  * for a live flow.
  */
 export async function POST(request: NextRequest) {
@@ -32,7 +32,6 @@ export async function POST(request: NextRequest) {
       message: body?.message,
       pdfUrl: body?.pdfUrl,
       name: body?.name,
-      matchType: body?.matchType,
       commentReplies: body?.commentReplies,
     });
 

@@ -24,7 +24,6 @@ export interface CommentToDmInput {
   message: string;
   pdfUrl: string;
   name?: string;
-  matchType?: MatchType;
   /** Public replies under the comment, one picked at random per comment. */
   commentReplies?: string[];
 }
@@ -32,7 +31,8 @@ export interface CommentToDmInput {
 export interface CommentToDmFlow {
   name: string;
   keyword: string;
-  matchType: MatchType;
+  /** The two ways a comment can ask for it; see `keywordMatches`. */
+  keywords: Array<{ value: string; matchType: MatchType }>;
   dmText: string;
   nodes: Array<Record<string, unknown>>;
   edges: Array<Record<string, unknown>>;
@@ -62,12 +62,28 @@ export function keywordKey(raw: string): string {
 export class InputError extends Error {}
 
 /**
- * Builds the graph, or throws InputError with a reason the routine can act on.
+ * How a comment asks for the lead magnet, as Rafa set it.
  *
- * The default match is `exact`. The comment matcher lowercases the comment
- * and tests the keyword against it; with `contains`, a two-letter word like
- * `SS` would fire on "assim", "isso" and half of every comment section.
+ * - The word alone, `SS` (any case): the whole comment must be just that.
+ *   The matcher lowercases the comment and tests the keyword against it, so
+ *   `contains` on a bare two-letter word would fire on "assim", "isso" and
+ *   half of every comment section, sending the PDF to people who never
+ *   asked for it. "quero SS" does not fire either: a bare word inside a
+ *   sentence is too often just a word.
+ * - With the hashtag, `#SS`: anywhere in the comment ("quero o #SS!"). The
+ *   `#` is deliberate, nobody types it by accident, so a sentence is fine.
+ *
+ * Fixed rather than chosen by the routine: this is a decision about who
+ * gets messaged, and it is Rafa's.
  */
+export function keywordMatches(keyword: string): Array<{ value: string; matchType: MatchType }> {
+  return [
+    { value: keyword, matchType: "exact" },
+    { value: `#${keyword}`, matchType: "contains" },
+  ];
+}
+
+/** Builds the graph, or throws InputError with a reason the routine can act on. */
 export function buildCommentToDmFlow(input: CommentToDmInput): CommentToDmFlow {
   if (typeof input.keyword !== "string" || !cleanKeyword(input.keyword)) {
     throw new InputError("keyword é obrigatório.");
@@ -84,10 +100,7 @@ export function buildCommentToDmFlow(input: CommentToDmInput): CommentToDmFlow {
     throw new InputError("pdfUrl precisa ser um link https.");
   }
 
-  const matchType: MatchType = input.matchType ?? "exact";
-  if (!["exact", "contains", "startsWith"].includes(matchType)) {
-    throw new InputError("matchType precisa ser exact, contains ou startsWith.");
-  }
+  const keywords = keywordMatches(keyword);
 
   const message = input.message.trim();
   const dmText = message.includes("{{link}}")
@@ -121,7 +134,7 @@ export function buildCommentToDmFlow(input: CommentToDmInput): CommentToDmFlow {
       position: { x: 0, y: 0 },
       data: {
         triggerType: "comment_keyword",
-        keywords: [{ value: keyword, matchType }],
+        keywords,
         ...(commentReplies.length ? { commentReplies } : {}),
       },
     },
@@ -146,12 +159,12 @@ export function buildCommentToDmFlow(input: CommentToDmInput): CommentToDmFlow {
   return {
     name,
     keyword,
-    matchType,
+    keywords,
     dmText,
     nodes,
     edges,
     triggerConfig: {
-      keywords: [{ value: keyword, matchType }],
+      keywords,
       ...(commentReplies.length ? { replyTexts: commentReplies } : {}),
     },
   };

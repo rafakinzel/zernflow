@@ -54,6 +54,31 @@ export interface KeywordEntry {
   live: boolean;
   createdByCentral: boolean;
   source: "trigger" | "flow_node";
+  /** Each way a comment can set it off, as stored: `{ value: "#SS", matchType: "contains" }`. */
+  matches: KeywordMatch[];
+  /** Set when a match is loose enough to fire on comments that never asked. */
+  warning?: string;
+}
+
+export interface KeywordMatch {
+  value: string;
+  matchType: string;
+}
+
+/**
+ * A short bare word matched anywhere in the comment fires on ordinary
+ * words: `contains` on "ss" catches "assim" and "isso". A hashtag is
+ * deliberate, so it is not flagged.
+ */
+function looseMatchWarning(matches: KeywordMatch[]): string | undefined {
+  const loose = matches.find(
+    (m) =>
+      !m.value.startsWith("#") &&
+      m.matchType !== "exact" &&
+      cleanKeyword(m.value).length <= 3
+  );
+  if (!loose) return undefined;
+  return `"${loose.value}" com ${loose.matchType} dispara em qualquer comentário que tenha essas letras dentro de outra palavra.`;
 }
 
 const KEYWORD_TRIGGER_TYPES: TriggerType[] = ["comment_keyword", "keyword"];
@@ -106,21 +131,30 @@ export async function listKeywords(db: Db, workspaceId: string): Promise<Keyword
     : { data: [], error: null };
   if (triggersError) throw new Error(triggersError.message);
 
-  const entries: KeywordEntry[] = [];
-  const seen = new Set<string>();
-  const add = (entry: KeywordEntry) => {
+  // One entry per keyword, kind and flow; "SS" and "#SS" on the same
+  // trigger are one keyword asked for two ways, gathered into `matches`.
+  const entries = new Map<string, KeywordEntry>();
+  const add = (entry: Omit<KeywordEntry, "matches" | "warning">, match: KeywordMatch) => {
     const id = `${keywordKey(entry.keyword)}|${entry.type}|${entry.flowId}`;
-    if (seen.has(id)) return;
-    seen.add(id);
-    entries.push(entry);
+    const existing = entries.get(id);
+    if (existing) {
+      // A published flow has both a node and a trigger row; the row is what
+      // runs, so the node only adds what the row lacks.
+      if (existing.source !== entry.source && existing.source === "trigger") return;
+      if (!existing.matches.some((m) => m.value === match.value && m.matchType === match.matchType)) {
+        existing.matches.push(match);
+      }
+      return;
+    }
+    entries.set(id, { ...entry, matches: [match] });
   };
 
   for (const t of triggers ?? []) {
     const flow = flowById.get(t.flow_id);
     if (!flow) continue;
-    for (const keyword of keywordsOf(t.config)) {
+    for (const match of keywordsOf(t.config)) {
       add({
-        keyword,
+        keyword: cleanKeyword(match.value),
         type: t.type,
         flowId: flow.id,
         flowName: flow.name,
@@ -129,7 +163,7 @@ export async function listKeywords(db: Db, workspaceId: string): Promise<Keyword
         live: t.is_active && flow.status === "published",
         createdByCentral: flow.created_via === CENTRAL_CREATED_VIA,
         source: "trigger",
-      });
+      }, match);
     }
   }
 
@@ -144,9 +178,9 @@ export async function listKeywords(db: Db, workspaceId: string): Promise<Keyword
         ...keywordsOf({ keywords: data.keywords }),
         ...keywordsOf({ keywords: data.config?.keywords }),
       ];
-      for (const keyword of fromNode) {
+      for (const match of fromNode) {
         add({
-          keyword,
+          keyword: cleanKeyword(match.value),
           type,
           flowId: flow.id,
           flowName: flow.name,
@@ -155,22 +189,42 @@ export async function listKeywords(db: Db, workspaceId: string): Promise<Keyword
           live: false,
           createdByCentral: flow.created_via === CENTRAL_CREATED_VIA,
           source: "flow_node",
-        });
+        }, match);
       }
     }
   }
 
-  return entries.sort((a, b) => keywordKey(a.keyword).localeCompare(keywordKey(b.keyword)));
+  return [...entries.values()]
+    .map((e) => {
+      const warning = looseMatchWarning(e.matches);
+      return warning ? { ...e, warning } : e;
+    })
+    .sort((a, b) => keywordKey(a.keyword).localeCompare(keywordKey(b.keyword)));
 }
 
-/** Keywords come as `[{ value }]` from the builder and `[string]` from templates. */
-function keywordsOf(config: Json | undefined): string[] {
+/**
+ * Keywords come as `[{ value, matchType }]` from the builder and `[string]`
+ * from templates. A missing matchType is `contains`, the comment matcher's
+ * own default, so the list reports what will actually happen.
+ */
+function keywordsOf(config: Json | undefined): KeywordMatch[] {
   const list = (config as { keywords?: unknown } | null)?.keywords;
+  const configType = (config as { matchType?: unknown } | null)?.matchType;
   if (!Array.isArray(list)) return [];
   return list
-    .map((k) => (typeof k === "string" ? k : (k as { value?: unknown })?.value))
-    .filter((k): k is string => typeof k === "string" && cleanKeyword(k).length > 0)
-    .map(cleanKeyword);
+    .map((k) =>
+      typeof k === "string"
+        ? { value: k, matchType: typeof configType === "string" ? configType : "contains" }
+        : {
+            value: (k as { value?: unknown })?.value,
+            matchType: (k as { matchType?: unknown })?.matchType ?? configType ?? "contains",
+          }
+    )
+    .filter(
+      (k): k is KeywordMatch =>
+        typeof k.value === "string" && cleanKeyword(k.value).length > 0 && typeof k.matchType === "string"
+    )
+    .map((k) => ({ value: k.value.trim(), matchType: k.matchType }));
 }
 
 export interface CreatedDraft {
@@ -178,7 +232,7 @@ export interface CreatedDraft {
   triggerId: string;
   name: string;
   keyword: string;
-  matchType: string;
+  keywords: KeywordMatch[];
   dmText: string;
   status: "draft";
   triggerActive: false;
@@ -257,7 +311,7 @@ export async function createDraftFlow(
     triggerId: trigger.id,
     name: built.name,
     keyword: built.keyword,
-    matchType: built.matchType,
+    keywords: built.keywords,
     dmText: built.dmText,
     status: "draft",
     triggerActive: false,
