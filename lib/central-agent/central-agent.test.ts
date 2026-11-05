@@ -17,6 +17,7 @@ import {
   uploadIsca,
 } from "./store";
 import { buildDesiredTriggers } from "@/lib/flow-triggers";
+import { matchCommentTrigger } from "@/lib/comment-processor";
 
 const KEY = "k".repeat(48);
 const WS = "11111111-1111-1111-1111-111111111111";
@@ -139,7 +140,10 @@ describe("the comment-to-DM graph", () => {
 
     expect(trigger.type).toBe("trigger");
     expect(trigger.data.triggerType).toBe("comment_keyword");
-    expect(trigger.data.keywords).toEqual([{ value: "SS", matchType: "exact" }]);
+    expect(trigger.data.keywords).toEqual([
+      { value: "SS", matchType: "exact" },
+      { value: "#SS", matchType: "contains" },
+    ]);
     expect(message.type).toBe("sendMessage");
     expect(message.data.messages).toHaveLength(1);
     expect(message.data.messages[0].text).toBe(`Oi! Aqui está o seu guia: ${validInput.pdfUrl}`);
@@ -171,6 +175,26 @@ describe("the comment-to-DM graph", () => {
     expect(rows[0].config).toEqual(flow.triggerConfig);
   });
 
+  it("fires on the word alone or with its hashtag, and not on a stray pair of letters", () => {
+    // Run through the real comment matcher, on the row publishing would write.
+    const flow = buildCommentToDmFlow(validInput);
+    const [row] = buildDesiredTriggers(flow.nodes, "flow-1");
+    const trigger = { ...row, id: "t" } as any;
+    const fires = (text: string) => matchCommentTrigger([trigger], { postId: "p", text }) !== null;
+
+    for (const text of ["SS", "ss", " Ss ", "#SS", "#ss", "quero o #SS!", "#SS por favor"]) {
+      expect(fires(text), text).toBe(true);
+    }
+    for (const text of ["assim", "isso mesmo", "quero SS", "SS por favor", "passei aqui", "s s"]) {
+      expect(fires(text), text).toBe(false);
+    }
+  });
+
+  it("does not let the routine loosen the match", () => {
+    const flow = buildCommentToDmFlow({ ...validInput, matchType: "contains" } as any);
+    expect(flow.keywords.find((k) => k.value === "SS")?.matchType).toBe("exact");
+  });
+
   it("appends the link when the message does not place it", () => {
     const flow = buildCommentToDmFlow({ ...validInput, message: "Seu guia chegou." });
     expect(flow.dmText).toBe(`Seu guia chegou.\n\n${validInput.pdfUrl}`);
@@ -185,9 +209,6 @@ describe("the comment-to-DM graph", () => {
     expect(() => buildCommentToDmFlow({ ...validInput, message: " " })).toThrow(InputError);
     expect(() => buildCommentToDmFlow({ ...validInput, pdfUrl: "http://x/a.pdf" })).toThrow(InputError);
     expect(() => buildCommentToDmFlow({ ...validInput, message: "a".repeat(1000) })).toThrow(InputError);
-    expect(() =>
-      buildCommentToDmFlow({ ...validInput, matchType: "regex" as any })
-    ).toThrow(InputError);
   });
 });
 
@@ -298,7 +319,48 @@ describe("listing keywords", () => {
       createdByCentral: false,
     });
     expect(list.find((k) => k.keyword === "SS")).toMatchObject({ live: false, createdByCentral: true });
+    expect(list.filter((k) => k.keyword === "FA" && k.type === "comment_keyword")).toHaveLength(1);
     expect(db.ops.every((o) => o.op === "select")).toBe(true);
+  });
+});
+
+describe("the list warns about loose matches", () => {
+  const listWith = (keywords: unknown[]) =>
+    listKeywords(
+      fakeDb({
+        flows: [{ id: "f1", name: "x", status: "published", nodes: [], created_via: null }],
+        triggers: [{ id: "t1", flow_id: "f1", type: "comment_keyword", config: { keywords }, is_active: true }],
+      }).client,
+      WS
+    );
+
+  it("gathers SS and #SS into one keyword with both rules", async () => {
+    const [entry] = await listWith([
+      { value: "SS", matchType: "exact" },
+      { value: "#SS", matchType: "contains" },
+    ]);
+    expect(entry.keyword).toBe("SS");
+    expect(entry.matches).toEqual([
+      { value: "SS", matchType: "exact" },
+      { value: "#SS", matchType: "contains" },
+    ]);
+    expect(entry.warning).toBeUndefined();
+  });
+
+  it("flags a short bare word matched anywhere in the comment", async () => {
+    const [entry] = await listWith([{ value: "fa", matchType: "contains" }]);
+    expect(entry.warning).toContain("fa");
+  });
+
+  it("treats a keyword with no rule as contains, as the matcher does", async () => {
+    const [entry] = await listWith([{ value: "rd" }]);
+    expect(entry.matches).toEqual([{ value: "rd", matchType: "contains" }]);
+    expect(entry.warning).toBeDefined();
+  });
+
+  it("does not flag a long word or a hashtag", async () => {
+    expect((await listWith([{ value: "casal", matchType: "contains" }]))[0].warning).toBeUndefined();
+    expect((await listWith([{ value: "#fa", matchType: "contains" }]))[0].warning).toBeUndefined();
   });
 });
 
