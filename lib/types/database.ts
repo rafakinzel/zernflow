@@ -447,6 +447,7 @@ export interface Database {
           viewport: Json | null;
           version: number;
           published_at: string | null;
+          created_via: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -455,6 +456,7 @@ export interface Database {
           workspace_id: string;
           name: string;
           description?: string | null;
+          created_via?: string | null;
           status?: FlowStatus;
           nodes?: Json;
           edges?: Json;
