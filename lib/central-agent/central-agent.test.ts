@@ -18,6 +18,7 @@ import {
 } from "./store";
 import { buildDesiredTriggers } from "@/lib/flow-triggers";
 import { matchCommentTrigger } from "@/lib/comment-processor";
+import { buildMapa, checarPalavra, dispara, resumirPasso } from "./mapa";
 
 const KEY = "k".repeat(48);
 const WS = "11111111-1111-1111-1111-111111111111";
@@ -513,9 +514,11 @@ describe("what the door can never do", () => {
       .sort();
     expect(routes).toEqual([
       "flows/[flowId]/route.ts GET",
+      "flows/checar/route.ts POST",
       "flows/route.ts POST",
       "iscas/route.ts POST",
       "keywords/route.ts GET",
+      "mapa/route.ts GET",
     ]);
   });
 
@@ -545,5 +548,116 @@ describe("what the door can never do", () => {
     const guard = store.slice(at, at + 200);
     expect(guard).toContain('.eq("created_via", CENTRAL_CREATED_VIA)');
     expect(guard).toContain('.eq("status", "draft")');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The map and the collision check: what the routines read before they touch
+// anything, so a new keyword never steals comments from a flow that runs.
+// ---------------------------------------------------------------------------
+
+const faLive = {
+  flows: [
+    {
+      id: "fa",
+      name: "Financial Advice",
+      description: null,
+      status: "published",
+      created_via: null,
+      updated_at: "2026-11-01T00:00:00Z",
+      nodes: [
+        { id: "t", type: "trigger", data: { triggerType: "comment_keyword", keywords: [{ value: "FA", matchType: "contains" }] } },
+        { id: "m", type: "sendMessage", data: { messages: [{ text: "Oi! Me conta: você já investe? https://vertowealth.com.au", buttons: [{ type: "url", title: "Agendar", url: "https://cal.com/x" }] }], waitForReply: true } },
+        { id: "g", type: "addTag", data: { tagName: "lead-fa" } },
+      ],
+      edges: [{ source: "t", target: "m" }, { source: "m", target: "g" }],
+    },
+    {
+      id: "fadm",
+      name: "FA no direct",
+      description: null,
+      status: "published",
+      created_via: null,
+      updated_at: null,
+      nodes: [],
+      edges: [],
+    },
+  ],
+  triggers: [
+    { id: "t1", flow_id: "fa", type: "comment_keyword", config: { keywords: [{ value: "FA", matchType: "contains" }] }, is_active: true },
+    { id: "t2", flow_id: "fadm", type: "keyword", config: { keywords: [{ value: "#FA", matchType: "contains" }] }, is_active: true },
+  ],
+};
+
+describe("the keyword check", () => {
+  it("uses the comment matcher's own rule", () => {
+    expect(dispara({ value: "fa", matchType: "contains" }, "#familia")).toBe(true);
+    expect(dispara({ value: "ss", matchType: "exact" }, "assim")).toBe(false);
+    expect(dispara({ value: "#ss", matchType: "contains" }, "quero o #SS")).toBe(true);
+  });
+
+  it("refuses a word an existing loose keyword would steal", async () => {
+    const list = await listKeywords(fakeDb(faLive).client, WS);
+    const check = checarPalavra("FAMILIA", list);
+    expect(check.podeCriar).toBe(false);
+    expect(check.conflitos[0]).toMatchObject({ flowNome: "Financial Advice", noAr: true });
+  });
+
+  it("refuses a word that would steal an existing one", async () => {
+    const db = fakeDb({
+      flows: [{ id: "c", name: "Casal", status: "published", nodes: [], created_via: null }],
+      triggers: [{ id: "t", flow_id: "c", type: "comment_keyword", config: { keywords: [{ value: "#casal", matchType: "contains" }] }, is_active: true }],
+    });
+    const check = checarPalavra("cas", await listKeywords(db.client, WS));
+    expect(check.podeCriar).toBe(false);
+  });
+
+  it("lets an unrelated word through, and only warns about a DM namesake", async () => {
+    const list = await listKeywords(fakeDb(faLive).client, WS);
+    expect(checarPalavra("SS", list)).toMatchObject({ podeCriar: true, conflitos: [] });
+  });
+
+  it("accepts levaPara only for a live DM keyword", async () => {
+    const list = await listKeywords(fakeDb(faLive).client, WS);
+    expect(checarPalavra("SS", list, "FA").levaPara).toMatchObject({ flowNome: "FA no direct" });
+    expect(checarPalavra("SS", list, "XYZ")).toMatchObject({ podeCriar: false, levaPara: { erro: expect.any(String) } });
+  });
+
+  it("POST /flows refuses a colliding word and writes nothing", async () => {
+    const db = fakeDb(faLive);
+    const err = await createDraftFlow(db.client, WS, { ...validInput, keyword: "FAMILIA" }).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect((err as ConflictError).conflitos.length).toBeGreaterThan(0);
+    expect(db.ops.filter((o) => o.op !== "select")).toEqual([]);
+  });
+
+  it("POST /flows with levaPara needs the DM to invite the person", async () => {
+    const db = fakeDb(faLive);
+    await expect(createDraftFlow(db.client, WS, { ...validInput, levaPara: "FA" })).rejects.toBeInstanceOf(InputError);
+    const ok = await createDraftFlow(fakeDb(faLive).client, WS, {
+      ...validInput,
+      message: "Aqui está o seu guia: {{link}} Se quiser falar do seu caso, me manda #FA aqui.",
+      levaPara: "FA",
+    });
+    expect(ok.levaPara).toMatchObject({ palavra: "#FA", flowNome: "FA no direct" });
+  });
+});
+
+describe("the map", () => {
+  it("describes every flow in plain words and only reads", async () => {
+    const db = fakeDb(faLive);
+    const mapa = await buildMapa(db.client, WS);
+    const fa = mapa.flows.find((f) => f.id === "fa")!;
+    expect(fa.noAr).toBe(true);
+    expect(fa.passos.map((p) => p.tipo)).toEqual(["trigger", "sendMessage", "addTag"]);
+    expect(fa.passos[1].resumo).toContain("Agendar → https://cal.com/x");
+    expect(fa.passos[2].resumo).toContain('"lead-fa"');
+    expect(fa.links).toContain("https://vertowealth.com.au");
+    expect(db.ops.every((o) => o.op === "select")).toBe(true);
+  });
+
+  it("names the flow a Go to flow step hands people to", () => {
+    const passo = resumirPasso({ type: "goToFlow", data: { flowId: "fa" } }, new Map([["fa", "Financial Advice"]]));
+    expect(passo.resumo).toBe('Leva para o flow "Financial Advice"');
   });
 });

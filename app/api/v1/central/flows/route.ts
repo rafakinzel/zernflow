@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
       pdfUrl: body?.pdfUrl,
       name: body?.name,
       commentReplies: body?.commentReplies,
+      levaPara: body?.levaPara,
     });
 
     return NextResponse.json(created, { status: 201 });

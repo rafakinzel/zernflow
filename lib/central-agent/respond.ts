@@ -14,7 +14,7 @@ export function errorResponse(error: unknown, where: string): NextResponse {
   }
   if (error instanceof ConflictError) {
     return NextResponse.json(
-      { error: error.message, existing: error.existing },
+      { error: error.message, existing: error.existing, conflitos: error.conflitos },
       { status: 409 }
     );
   }

@@ -9,6 +9,7 @@ import {
   keywordKey,
   type CommentToDmInput,
 } from "./flow-template";
+import { checarPalavra, type Conflito } from "./mapa";
 
 /**
  * Everything the Central TB's routines can do to the database.
@@ -33,7 +34,8 @@ export const MAX_PDF_BYTES = 50 * 1024 * 1024;
 export class ConflictError extends Error {
   constructor(
     message: string,
-    readonly existing: KeywordEntry[]
+    readonly existing: KeywordEntry[],
+    readonly conflitos: Conflito[] = []
   ) {
     super(message);
   }
@@ -236,6 +238,8 @@ export interface CreatedDraft {
   dmText: string;
   status: "draft";
   triggerActive: false;
+  /** The live flow this one invites the person on to, when asked. */
+  levaPara?: { palavra: string; flowId: string; flowNome: string };
 }
 
 /**
@@ -258,14 +262,32 @@ export async function createDraftFlow(
 ): Promise<CreatedDraft> {
   const built = buildCommentToDmFlow(input);
 
-  const existing = (await listKeywords(db, workspaceId)).filter(
-    (e) => keywordKey(e.keyword) === keywordKey(built.keyword)
-  );
-  if (existing.length > 0) {
+  // Same word, or one that would fire alongside an existing comment keyword
+  // (either way round), is refused: the person would get the wrong DM, or two.
+  const all = await listKeywords(db, workspaceId);
+  const check = checarPalavra(built.keyword, all, input.levaPara);
+  if (check.conflitos.length > 0) {
+    const same = check.conflitos.every((c) => c.motivo === "mesma palavra");
     throw new ConflictError(
-      `A palavra "${built.keyword}" já tem gatilho.`,
-      existing
+      same
+        ? `A palavra "${built.keyword}" já tem gatilho.`
+        : `A palavra "${built.keyword}" conflita com flows que já existem.`,
+      all.filter((e) => check.conflitos.some((c) => c.flowId === e.flowId && keywordKey(c.palavra) === keywordKey(e.keyword))),
+      check.conflitos
     );
+  }
+  let levaPara: CreatedDraft["levaPara"];
+  if (check.levaPara) {
+    if ("erro" in check.levaPara) throw new InputError(check.levaPara.erro);
+    // The comment flow can only hand someone on in words: Instagram allows one
+    // private reply per comment, text only, so the DM has to invite them to
+    // send the other flow's keyword.
+    if (!built.dmText.toLowerCase().includes(check.levaPara.palavra.toLowerCase())) {
+      throw new InputError(
+        `Para levar a pessoa ao flow "${check.levaPara.flowNome}", a mensagem precisa convidar a mandar ${check.levaPara.palavra} no direct.`
+      );
+    }
+    levaPara = check.levaPara;
   }
 
   const { data: flow, error: flowError } = await db
@@ -315,6 +337,7 @@ export async function createDraftFlow(
     dmText: built.dmText,
     status: "draft",
     triggerActive: false,
+    ...(levaPara ? { levaPara } : {}),
   };
 }
 
