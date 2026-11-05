@@ -15,27 +15,32 @@ Código: `app/api/v1/central/*` e `lib/central-agent/*`.
 
 ## Autenticação
 
-Toda chamada leva a chave no cabeçalho:
+Toda chamada precisa chegar com o cabeçalho
+`Authorization: Bearer <chave>`. Sem a chave, com a chave errada, ou se
+`CENTRAL_AGENT_KEY` não estiver configurada no servidor: `401`. A comparação
+é em tempo constante e a chave nunca vai para o log.
 
-```
-Authorization: Bearer $CENTRAL_AGENT_KEY
-```
+**Nas rotinas da Central, a rotina não manda a chave.** Ela está guardada
+como *Network secret* do ambiente na nuvem, para o site
+`bot.thiagoborrelli.com`, e o proxy da Anthropic põe o cabeçalho em cada
+chamada para esse site, fora da máquina da rotina. A chave não existe como
+variável, nem em arquivo, e a rotina não tem como lê-la. Por isso os
+exemplos abaixo não têm `-H "Authorization: …"`: não acrescente, um cabeçalho
+mandado pela rotina (vazio, por exemplo) pode atrapalhar o que o proxy põe.
 
-(`x-central-agent-key: $CENTRAL_AGENT_KEY` também serve.) Sem a chave, com a
-chave errada, ou se a variável não estiver configurada no servidor: `401`.
-A comparação é em tempo constante e a chave nunca vai para o log.
+Fora desse ambiente (um teste no próprio computador, com a chave em mãos),
+acrescente `-H "Authorization: Bearer $CENTRAL_AGENT_KEY"` em cada chamada.
 
-Nos exemplos, `BASE=https://bot.thiagoborrelli.com`.
+Nos exemplos, `BASE` é a variável de ambiente `$BORRELLICHAT_URL`
+(`https://bot.thiagoborrelli.com`).
 
 ## 1. Quais palavras-chave já existem
 
 ```bash
-curl -s "$BASE/api/v1/central/keywords" \
-  -H "Authorization: Bearer $CENTRAL_AGENT_KEY"
+curl -s "$BASE/api/v1/central/keywords"
 
 # só uma palavra (ignora maiúscula e #)
-curl -s "$BASE/api/v1/central/keywords?keyword=SS" \
-  -H "Authorization: Bearer $CENTRAL_AGENT_KEY"
+curl -s "$BASE/api/v1/central/keywords?keyword=SS"
 ```
 
 Resposta:
@@ -52,7 +57,9 @@ Resposta:
       "triggerActive": true,
       "live": true,
       "createdByCentral": false,
-      "source": "trigger"
+      "source": "trigger",
+      "matches": [{ "value": "FA", "matchType": "contains" }],
+      "warning": "\"FA\" com contains dispara em qualquer comentário que tenha essas letras dentro de outra palavra."
     }
   ]
 }
@@ -62,6 +69,13 @@ Resposta:
 - `live`: responde hoje (gatilho ativo **e** flow publicado).
 - `source: "flow_node"`: a palavra está só no nó de um rascunho que nunca foi
   publicado (ainda sem linha em `triggers`). Conta como existente.
+- `matches`: cada forma de comentário que dispara, como está gravada.
+  `exact` = o comentário inteiro é só isso; `contains` = em qualquer lugar.
+  "SS" e "#SS" do mesmo flow aparecem juntos aqui, numa entrada só.
+- `warning`: aparece quando uma palavra curta, sem `#`, está como `contains`
+  ou `startsWith`. Isso dispara em comentários que só têm as letras dentro de
+  outra palavra ("ss" em "assim"). Vale avisar a Rafa; a porta não corrige
+  flow existente.
 
 Lista vazia para uma palavra = pode criar.
 
@@ -69,7 +83,6 @@ Lista vazia para uma palavra = pode criar.
 
 ```bash
 curl -s -X POST "$BASE/api/v1/central/flows" \
-  -H "Authorization: Bearer $CENTRAL_AGENT_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "keyword": "SS",
@@ -87,10 +100,19 @@ Campos:
 | `message` | sim | texto do direct; `{{link}}` marca onde entra o link do PDF (sem isso, o link vai no fim) |
 | `pdfUrl` | sim | link `https` do PDF (normalmente o `publicUrl` da rota 3) |
 | `name` | não | nome do flow; padrão `Central TB · <palavra>` |
-| `matchType` | não | `exact` (padrão), `contains` ou `startsWith` |
 | `commentReplies` | não | respostas públicas embaixo do comentário, uma sorteada por vez |
 
-Qualquer outro campo é ignorado (mandar `status` ou `is_active` não muda nada).
+Qualquer outro campo é ignorado (mandar `status`, `is_active` ou `matchType`
+não muda nada).
+
+Quando o comentário dispara, sempre do mesmo jeito (regra da Rafa):
+
+| comentário | dispara? | por quê |
+|---|---|---|
+| `SS`, `ss`, ` Ss ` | sim | a palavra sozinha (`exact`) |
+| `#SS`, `quero o #SS!` | sim | com `#`, em qualquer lugar (`contains`) |
+| `quero SS`, `SS por favor` | não | palavra sem `#` no meio de uma frase |
+| `assim`, `isso`, `passei` | não | só têm as letras dentro de outra palavra |
 
 Resposta `201`:
 
@@ -100,7 +122,10 @@ Resposta `201`:
   "triggerId": "…",
   "name": "Central TB · SS",
   "keyword": "SS",
-  "matchType": "exact",
+  "keywords": [
+    { "value": "SS", "matchType": "exact" },
+    { "value": "#SS", "matchType": "contains" }
+  ],
   "dmText": "Oi! Aqui está o guia que você pediu: https://…",
   "status": "draft",
   "triggerActive": false
@@ -118,9 +143,10 @@ comentário, o motor manda essa bolha como resposta privada do Instagram, que
 aceita uma mensagem de texto; por isso o link vai dentro do texto, e não num
 botão.
 
-Sobre `matchType`: o padrão é `exact` porque o comentário é comparado em
-minúsculas, e `contains` com uma palavra curta como `SS` dispararia em "assim"
-ou "isso". Com `exact`, "SS 🙏" não casa; a Rafa ajusta no construtor se quiser.
+O comentário é comparado em minúsculas, e `contains` numa palavra curta sem
+`#` dispararia em "assim" ou "isso", mandando o PDF para quem não pediu. Por
+isso a palavra sozinha é `exact` e só a forma com `#` é `contains`. Com
+`exact`, "SS 🙏" não dispara; a Rafa ajusta no construtor se quiser.
 
 ## 3. Subir o PDF
 
@@ -128,7 +154,6 @@ PDF até ~4 MB, direto:
 
 ```bash
 curl -s -X POST "$BASE/api/v1/central/iscas" \
-  -H "Authorization: Bearer $CENTRAL_AGENT_KEY" \
   -F "file=@guia-ss.pdf;type=application/pdf"
 ```
 
@@ -137,7 +162,6 @@ de envio e mande o arquivo direto para o Storage.
 
 ```bash
 curl -s -X POST "$BASE/api/v1/central/iscas" \
-  -H "Authorization: Bearer $CENTRAL_AGENT_KEY" \
   -H "Content-Type: application/json" \
   -d '{"fileName": "guia-ss.pdf"}'
 # → { "path": "...", "uploadUrl": "https://…", "publicUrl": "https://…" }
@@ -155,8 +179,7 @@ sobrescrito.
 ## 4. Estado de um flow criado pela porta
 
 ```bash
-curl -s "$BASE/api/v1/central/flows/<flowId>" \
-  -H "Authorization: Bearer $CENTRAL_AGENT_KEY"
+curl -s "$BASE/api/v1/central/flows/<flowId>"
 ```
 
 ```json
@@ -169,7 +192,10 @@ curl -s "$BASE/api/v1/central/flows/<flowId>" \
   "version": 1,
   "publishedAt": null,
   "updatedAt": "…",
-  "keywords": ["SS"]
+  "keywords": [
+    { "value": "SS", "matchType": "exact" },
+    { "value": "#SS", "matchType": "contains" }
+  ]
 }
 ```
 
@@ -193,8 +219,10 @@ então um rascunho com gatilho desligado está desligado duas vezes.
 
 ## Configuração no servidor
 
-- `CENTRAL_AGENT_KEY`: a chave (mínimo 32 caracteres; com menos, a porta
-  recusa tudo).
+- `CENTRAL_AGENT_KEY` na Vercel: a chave (mínimo 32 caracteres; com menos,
+  a porta recusa tudo). A mesma chave fica como Network secret no ambiente da
+  rotina, para `bot.thiagoborrelli.com`, e `BORRELLICHAT_URL` como variável
+  comum.
 - `CENTRAL_AGENT_WORKSPACE_ID` (opcional): o workspace onde os flows são
   criados. Sem ele, usa o único workspace que existir; se houver mais de um,
   a porta recusa até a variável ser definida.
