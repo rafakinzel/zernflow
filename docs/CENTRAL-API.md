@@ -7,9 +7,16 @@ rascunho, com o gatilho desligado, e só entra no ar quando a Rafa publica no
 construtor.
 
 O que a porta não faz, e não tem como fazer: ativar gatilho, publicar, editar
-ou apagar flow existente, mexer em contatos, conversas ou envios. Isso está
-travado no código (não existe rota nem parâmetro para isso) e num teste que lê
-o próprio código: `lib/central-agent/central-agent.test.ts`.
+ou apagar flow existente, mexer em contatos. Isso está travado no código (não
+existe rota nem parâmetro para isso) e num teste que lê o próprio código:
+`lib/central-agent/central-agent.test.ts`.
+
+A única exceção é o direct (rotas 5 e 6, para a Marina): ler as conversas
+recentes do Instagram e mandar uma resposta que a Rafa ou o Thiago aprovaram.
+Essas rotas têm regras próprias, também travadas num teste que lê o código
+(`lib/central-agent/dm.test.ts`): só gravam o registro do envio da Central e,
+como o inbox faz, a hora e a prévia da última mensagem da conversa. Nunca
+mexem em flow, gatilho, contato, tag ou na pausa da automação.
 
 Código: `app/api/v1/central/*` e `lib/central-agent/*`.
 
@@ -273,6 +280,142 @@ curl -s "$BASE/api/v1/central/flows/<flowId>"
 Só enxerga flows criados por esta porta (`flows.created_via =
 'central_agent'`); qualquer outro id dá `404`.
 
+## 5. Conversas do direct (só leitura)
+
+```bash
+curl -s "$BASE/api/v1/central/conversas?dias=2&limite=50"
+```
+
+- `dias`: conversas com mensagem nos últimos N dias. Padrão 2, máximo 60.
+- `limite`: quantas conversas. Padrão 50, máximo 200. Acima do máximo vale o
+  máximo; zero, negativo ou não número dá `400`.
+
+Só Instagram, a conversa com mensagem mais recente primeiro. Resposta:
+
+```json
+{
+  "geradoEm": "2026-11-06T12:00:00.000Z",
+  "dias": 2,
+  "limite": 50,
+  "avisos": [],
+  "conversas": [
+    {
+      "id": "3f0c…",
+      "ultima_mensagem_em": "2026-11-06T11:00:00.000Z",
+      "ultima_do_contato_em": "2026-11-06T11:00:00.000Z",
+      "janela_aberta": true,
+      "janela_fecha_em": "2026-11-07T11:00:00.000Z",
+      "pausada": false,
+      "aguardando_resposta": true,
+      "tags": ["lead-ss"],
+      "fonte": "zernio",
+      "mensagens_omitidas": 0,
+      "mensagens": [
+        { "direcao": "contato", "texto": "SS", "em": "…" },
+        { "direcao": "automacao", "texto": "Aqui está o guia: https://…", "em": "…" },
+        { "direcao": "pessoa", "texto": "Oi! Sou eu, o Thiago", "em": "…" },
+        { "direcao": "pessoa", "texto": "…", "em": "…", "central": true },
+        { "direcao": "contato", "texto": null, "em": "…", "anexo": "image" }
+      ]
+    }
+  ]
+}
+```
+
+- `id`: o id da conversa no BorrelliChat. É o que vai em `conversa` na rota 6.
+- `ultima_do_contato_em`: a última mensagem que a pessoa mandou.
+- `janela_aberta`: dá para responder agora (janela de 24 horas do Instagram,
+  ver `docs/CENTRAL-COMO-FUNCIONA.md`). `false` também nos últimos 10
+  minutos da janela e quando não há registro de mensagem da pessoa.
+  `janela_fecha_em`: quando fecha (ou fechou).
+- `pausada`: alguém da equipe assumiu a conversa (atendimento humano) e a
+  automação está parada. A Central não responde conversa pausada.
+- `aguardando_resposta`: a última mensagem da conversa é da pessoa.
+- `mensagens`: as 30 mais recentes, da mais antiga para a mais nova;
+  `mensagens_omitidas` diz quantas mais antigas ficaram de fora. `texto` é
+  `null` quando a pessoa só mandou foto, áudio etc.; `anexo` diz o tipo (o
+  link do arquivo nunca vem).
+- `direcao`:
+  - `contato`: a pessoa escreveu.
+  - `automacao`: mandado por um flow, uma sequência ou um nó de IA.
+  - `pessoa`: mandado por alguém de verdade (Thiago ou Rafa, pelo inbox do
+    BorrelliChat ou pelo app do Instagram). Com `central: true`, foi uma
+    resposta da Central aprovada e mandada pela rota 6.
+- `fonte`: `zernio` (a conversa inteira, lida no Zernio, como o inbox lê) ou
+  `local` (o Zernio não respondeu ou limitou as chamadas, e a conversa veio
+  do registro do BorrelliChat: as mensagens da pessoa e dos flows estão
+  todas, mas uma resposta dada à mão pode faltar). Com `local`, `avisos`
+  explica.
+
+**Como `automacao` e `pessoa` são separados.** O Zernio não diz quem mandou
+uma mensagem, só que saiu da conta. Todo envio automático (flow, sequência,
+IA) grava no BorrelliChat uma linha na hora em que sai; o inbox e o app do
+Instagram não gravam nada. Então: mensagem de saída que bate com um envio
+automático gravado (pelo id da mensagem ou, sem id, pelo mesmo texto com até
+10 minutos de diferença) é `automacao`; que bate com um envio da Central é
+`pessoa` com `central: true`; qualquer outra mensagem de saída é `pessoa`.
+É confiável para o que vem dos flows (eles sempre gravam). Os erros possíveis
+vão para o lado seguro, fazendo a Central achar que alguém já respondeu: um
+envio automático cuja gravação falhou e as mensagens de **transmissão**
+(broadcast), que não são gravadas como mensagem, aparecem como `pessoa`.
+Inbox e app do Instagram não se distinguem entre si: os dois são `pessoa`.
+
+**Privacidade.** A resposta nunca traz @, nome, foto, telefone, e-mail, nem
+id do Instagram, do Zernio ou do contato. O único id é o da conversa. O texto
+das mensagens vem como a pessoa escreveu (pode ter o nome dela, se ela
+escreveu).
+
+Cada conversa é uma chamada ao Zernio, quatro de cada vez. Passando de 40
+segundos, as que faltam vêm do registro local (`fonte: "local"`). Para ler
+tudo do Zernio, peça menos conversas.
+
+## 6. Responder no direct
+
+```bash
+curl -s -X POST "$BASE/api/v1/central/responder" \
+  -H "Content-Type: application/json" \
+  -d '{"conversa": "3f0c…", "texto": "Oi! Te explico sim…", "chave": "aprovacao-123"}'
+```
+
+| campo | obrigatório | o que é |
+|---|---|---|
+| `conversa` | sim | o `id` da rota 5 |
+| `texto` | sim | a resposta aprovada, até 1000 caracteres (emoji conta 1) |
+| `chave` | não, mas use | um id único do envio (o id da aprovação na Central, por exemplo). A mesma chave nas 24 horas seguintes é recusada, então repetir a chamada depois de um erro de rede não manda duas vezes |
+
+Qualquer outro campo é ignorado. Manda pelo mesmo caminho do inbox
+(o Zernio, na mesma conversa), como texto simples, sem a etiqueta de
+"atendimento humano" (a Central só responde dentro das 24 horas, onde ela não
+é necessária). Depois de mandar, faz o que o inbox faz: atualiza a hora e a
+prévia da última mensagem da conversa. E grava o envio em
+`central_dm_sends`, que é como a rota 5 reconhece o que a Central mandou.
+
+Resposta `201`:
+
+```json
+{ "enviado": true, "conversa": "3f0c…", "envio": "9a1b…", "chave": "aprovacao-123", "em": "2026-11-06T12:00:03.000Z" }
+```
+
+Recusas (nada é mandado), sempre com `erro` em português e um `motivo` fixo:
+
+| status | `motivo` | quando |
+|---|---|---|
+| 400 | `json_invalido`, `conversa_invalida`, `texto_vazio`, `texto_longo`, `chave_invalida` | pedido malformado |
+| 400 | `nao_e_instagram` | a conversa não é do direct do Instagram |
+| 404 | `conversa_nao_encontrada` | a conversa não existe neste workspace |
+| 409 | `conversa_pausada` | alguém da equipe assumiu a conversa |
+| 409 | `fora_da_janela` | passaram 24 horas da última mensagem da pessoa (ou faltam menos de 10 minutos), ou não há mensagem dela |
+| 409 | `ja_respondida` | alguém já respondeu à mão depois da última mensagem da pessoa |
+| 409 | `ja_respondida_pela_central` | a Central já respondeu depois da última mensagem da pessoa |
+| 409 | `chave_repetida` | essa `chave` já foi usada nas últimas 24 horas |
+| 409 | `sem_conversa_no_zernio`, `sem_chave_zernio` | a conversa não está ligada ao Zernio |
+| 502 | `zernio_indisponivel` | não deu para ler a conversa no Zernio para conferir; tente de novo |
+| 502 | `envio_falhou` | o Zernio recusou o envio; a mesma `chave` pode ser usada de novo |
+| 503 | `migracao_pendente` | falta rodar a migração `00027_central_dm_sends.sql` |
+
+Sem a chave de acesso: `401` com `{ "error": "Unauthorized" }`, como nas
+outras rotas.
+
 ## Como o flow entra no ar
 
 Só pela Rafa: ela abre o flow no construtor, revisa e clica em Publicar. A
@@ -292,5 +435,9 @@ então um rascunho com gatilho desligado está desligado duas vezes.
   a porta recusa até a variável ser definida.
 - Migração `supabase/migrations/00026_central_agent.sql`: coluna
   `flows.created_via` e bucket `iscas`.
+- Migração `supabase/migrations/00027_central_dm_sends.sql`: tabela
+  `central_dm_sends` (registro e trava contra envio repetido das respostas da
+  Central). Sem ela, a rota 6 responde `503` e a rota 5 funciona, mas sem
+  `central: true`.
 
 Passo a passo para configurar: `docs/CENTRAL-PASSO-A-PASSO.md`.

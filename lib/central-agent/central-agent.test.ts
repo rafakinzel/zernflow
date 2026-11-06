@@ -444,8 +444,19 @@ describe("the routes", () => {
     const flows = await import("@/app/api/v1/central/flows/route");
     const flow = await import("@/app/api/v1/central/flows/[flowId]/route");
     const iscas = await import("@/app/api/v1/central/iscas/route");
+    const conversas = await import("@/app/api/v1/central/conversas/route");
+    const responder = await import("@/app/api/v1/central/responder/route");
     const params = { params: Promise.resolve({ flowId: "22222222-2222-2222-2222-222222222222" }) };
     return [
+      (h: HeadersInit) => conversas.GET(new Request("https://b/api/v1/central/conversas", { headers: h }) as any),
+      (h: HeadersInit) =>
+        responder.POST(
+          new Request("https://b/api/v1/central/responder", {
+            method: "POST",
+            headers: h,
+            body: JSON.stringify({ conversa: "22222222-2222-2222-2222-222222222222", texto: "oi" }),
+          }) as any
+        ),
       (h: HeadersInit) => keywords.GET(new Request("https://b/api/v1/central/keywords", { headers: h }) as any),
       (h: HeadersInit) =>
         flows.POST(new Request("https://b/api/v1/central/flows", { method: "POST", headers: h, body: "{}" }) as any),
@@ -497,10 +508,23 @@ function filesUnder(dir: string): string[] {
   });
 }
 
+const routeDir = join(ROOT, "app", "api", "v1", "central");
+
+/**
+ * The direct-message door reads conversations and sends approved replies,
+ * which the flow door must never do. It lives in these files only, and has
+ * rules of its own (dm.test.ts, "the DM door").
+ */
+const DM_FILES = [
+  join(routeDir, "conversas", "route.ts"),
+  join(routeDir, "responder", "route.ts"),
+  join(ROOT, "lib", "central-agent", "dm.ts"),
+  join(ROOT, "lib", "central-agent", "dm-store.ts"),
+];
+
 describe("what the door can never do", () => {
-  const routeDir = join(ROOT, "app", "api", "v1", "central");
   const sources = [...filesUnder(routeDir), ...filesUnder(join(ROOT, "lib", "central-agent"))].filter(
-    (f) => f.endsWith(".ts") && !f.endsWith(".test.ts")
+    (f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !DM_FILES.includes(f)
   );
 
   it("has exactly these routes and methods", () => {
@@ -513,12 +537,14 @@ describe("what the door can never do", () => {
       })
       .sort();
     expect(routes).toEqual([
+      "conversas/route.ts GET",
       "flows/[flowId]/route.ts GET",
       "flows/checar/route.ts POST",
       "flows/route.ts POST",
       "iscas/route.ts POST",
       "keywords/route.ts GET",
       "mapa/route.ts GET",
+      "responder/route.ts POST",
     ]);
   });
 

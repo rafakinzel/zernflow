@@ -59,6 +59,34 @@ entrar numa sequência.
   humano), a automação fica pausada para aquela pessoa; a palavra-chave
   sozinha reinicia.
 
+## Responder no direct (Marina)
+
+As rotas 5 e 6 de `docs/CENTRAL-API.md` deixam a Central ler o direct e
+mandar uma resposta que a Rafa ou o Thiago aprovaram. Três regras valem antes
+de qualquer texto:
+
+- **Janela de 24 horas.** Uma resposta livre só sai até 24 horas depois da
+  última mensagem da pessoa. A porta conta a partir da última mensagem dela
+  (não de um comentário, que não abre a janela do direct) e já recusa nos
+  últimos 10 minutos, porque a fila e o relógio do Instagram não são os
+  nossos. Passou da janela, a resposta espera a pessoa escrever de novo; não
+  insista nem tente outro caminho. O inbox pode responder até 7 dias como
+  "atendimento humano", mas essa etiqueta é para uma pessoa digitando, e a
+  Central não usa.
+- **Conversa assumida por alguém da equipe.** Quando um flow passa a conversa
+  para atendimento humano, a automação fica pausada (`pausada: true` na rota
+  5). Essa conversa é da pessoa que assumiu: a Central não responde, nem
+  rascunha resposta para ela. Quem tira a pausa é a equipe, no inbox (ou a
+  própria pessoa, mandando uma palavra-chave).
+- **Alguém já respondeu.** Se depois da última mensagem da pessoa já existe
+  uma resposta de `pessoa` (Thiago ou Rafa, pelo inbox ou pelo app) ou da
+  própria Central, a porta recusa. Uma resposta só de `automacao` (o flow
+  mandou o PDF, por exemplo) não impede.
+
+Quando o Thiago responde à mão no app do Instagram, a automação não pausa;
+é a regra "alguém já respondeu" que evita a Central falar por cima dele. Use sempre a `chave` (o id da aprovação) para que uma chamada
+repetida não mande a mesma resposta duas vezes.
+
 ## Antes de criar qualquer flow
 
 1. **Leia o mapa:** `GET /api/v1/central/mapa`. Ele lista todos os flows, se

@@ -982,6 +982,42 @@ export interface Database {
           },
         ];
       };
+      central_dm_sends: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          conversation_id: string;
+          chave: string | null;
+          texto: string;
+          status: "enviando" | "enviado" | "falhou";
+          platform_message_id: string | null;
+          erro: string | null;
+          created_at: string;
+          enviado_em: string | null;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          conversation_id: string;
+          chave?: string | null;
+          texto: string;
+          status?: "enviando" | "enviado" | "falhou";
+          platform_message_id?: string | null;
+          erro?: string | null;
+          created_at?: string;
+          enviado_em?: string | null;
+        };
+        Update: {
+          conversation_id?: string;
+          texto?: string;
+          status?: "enviando" | "enviado" | "falhou";
+          platform_message_id?: string | null;
+          erro?: string | null;
+          created_at?: string;
+          enviado_em?: string | null;
+        };
+        Relationships: [];
+      };
       webhook_events: {
         Row: {
           event_id: string;

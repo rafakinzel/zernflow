@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { InputError } from "./flow-template";
 import { ConflictError, NotFoundError } from "./store";
+import { Recusa } from "./dm";
 
 /**
  * Turns what the store threw into an answer the routine can act on.
@@ -24,4 +25,17 @@ export function errorResponse(error: unknown, where: string): NextResponse {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`[central-agent] ${where}:`, message);
   return NextResponse.json({ error: message }, { status: 500 });
+}
+
+/**
+ * The same, for the direct-message routes: refusals carry a Portuguese
+ * `erro` and a stable `motivo` the routine can branch on.
+ */
+export function dmErrorResponse(error: unknown, where: string): NextResponse {
+  if (error instanceof Recusa) {
+    return NextResponse.json({ erro: error.message, motivo: error.motivo }, { status: error.status });
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[central-agent] ${where}:`, message);
+  return NextResponse.json({ erro: message, motivo: "erro_interno" }, { status: 500 });
 }
