@@ -62,6 +62,16 @@ Every hand-over is listed, read-only, at `GET /api/v1/central/fluxos-parados`
 so the Central can tell Rafa. The Central door never resumes a run or lifts a
 pause (see the guards in `lib/central-agent/*.test.ts`).
 
+## The keyword always starts over
+
+Rafa's rule (07/11/2026): whoever sends a flow's keyword, by comment, DM or
+story reply, gets the flow from the start, as if for the first time, whether
+the conversation was paused, a run was half-way or they got the same flow
+months ago. A matched trigger retires every active run (`executeFlow`); a DM
+keyword lifts a pause (`restartFromKeyword`); a commented keyword does too
+(the conversation upsert in `comment-processor.ts`). Nothing limits a flow to
+once per person; do not add such a limit.
+
 ## Messaging window
 
 Meta allows a message within 24 hours of the person's last action. Waits are

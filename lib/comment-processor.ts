@@ -240,6 +240,12 @@ export async function processComment({
     // Local conversation only — there is no Zernio DM conversation until the
     // flow's privateReply node creates one, so late_conversation_id stays null
     // and sendMessage nodes in comment flows are no-ops until the contact replies.
+    //
+    // Commenting the keyword is asking for the flow again, so the conversation
+    // goes back to the bot, as a keyword sent by DM already does
+    // (restartFromKeyword). Without this, a contact whose conversation had
+    // been handed to a person got the first message of the flow and then
+    // silence: every reply, button taps included, met a paused conversation.
     const { data: conversation } = await supabase
       .from("conversations")
       .upsert(
@@ -249,6 +255,7 @@ export async function processComment({
           contact_id: contactId,
           platform: channel.platform,
           status: "open",
+          is_automation_paused: false,
           last_message_at: new Date().toISOString(),
           last_message_preview: `[Comment] ${comment.text.slice(0, 80)}`,
         },
