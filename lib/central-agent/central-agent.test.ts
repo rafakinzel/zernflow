@@ -13,6 +13,8 @@ import {
   createDraftFlow,
   getAgentFlowState,
   iscaPath,
+  isReelPath,
+  reelPath,
   listKeywords,
   uploadIsca,
 } from "./store";
@@ -414,6 +416,16 @@ describe("uploading a PDF", () => {
       `2026-11/${new Date("2026-11-05T00:00:00Z").getTime()}-casal-a-prova.pdf`
     );
   });
+
+  it("names reels readably and only deletes paths it handed out", () => {
+    const now = new Date("2026-11-08T00:00:00Z");
+    const path = reelPath("Casas e Juros: CBA.MP4", now);
+    expect(path).toBe(`2026-11/${now.getTime()}-casas-e-juros-cba.mp4`);
+    expect(isReelPath(path)).toBe(true);
+    expect(isReelPath("../iscas/2026-11/1-a.pdf")).toBe(false);
+    expect(isReelPath("2026-11/1-a.mp4/../../x.mp4")).toBe(false);
+    expect(isReelPath("")).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -549,6 +561,7 @@ describe("what the door can never do", () => {
       "iscas/route.ts POST",
       "keywords/route.ts GET",
       "mapa/route.ts GET",
+      "reels/route.ts POST,DELETE",
       "responder/route.ts POST",
     ]);
   });
