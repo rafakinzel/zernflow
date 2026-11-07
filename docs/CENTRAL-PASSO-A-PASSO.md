@@ -112,3 +112,10 @@ passos 3 e 4 (no Network secret, apague e crie de novo: o valor não pode ser
 editado), com redeploy na Vercel. Para desligar de vez, apague
 `CENTRAL_AGENT_KEY` da Vercel e faça redeploy: sem a variável, a porta recusa
 todo mundo.
+
+## Reels (08/11/2026)
+
+Para a Central agendar Reels sozinha: no projeto do **BorrelliChat** no
+Supabase (não o do Nexus), **SQL Editor** → **New query**, cole o conteúdo de
+`supabase/migrations/00028_central_reels.sql` e clique em **Run**. Confira em
+**Storage** um bucket `reels`, público. Não mexe em nada que já existe.

@@ -247,6 +247,36 @@ segundo). O `publicUrl` é o que vai em `pdfUrl` na rota 2. Bucket `iscas`,
 público, só PDF, até 50 MB. Cada envio ganha nome próprio; nada é
 sobrescrito.
 
+## 3b. Subir o Reels pronto (para a Metricool agendar)
+
+A Metricool só agenda Reels com o vídeo num link público. Depois que a Rafa e
+o Thiago aprovam, a rotina sobe o MP4 aqui e passa o `publicUrl` à Metricool.
+Vídeo sempre passa de ~4,5 MB, então é sempre pelo endereço de envio:
+
+```bash
+curl -s -X POST "$BASE/api/v1/central/reels" \
+  -H "Content-Type: application/json" \
+  -d '{"fileName": "casas-e-juros.mp4"}'
+# → { "path": "2026-11/1731000000000-casas-e-juros.mp4", "uploadUrl": "https://…", "publicUrl": "https://…" }
+
+curl -s -X PUT "<uploadUrl>" \
+  -H "Content-Type: video/mp4" \
+  --data-binary @casas-e-juros.mp4
+```
+
+Resposta `201`: `{ "path", "uploadUrl", "publicUrl" }`. Bucket `reels`,
+público, só MP4, até 50 MB. Cada envio ganha nome próprio; nada é sobrescrito.
+
+Depois que o Reels sai no Instagram, apague o arquivo:
+
+```bash
+curl -s -X DELETE "$BASE/api/v1/central/reels?path=<path>"
+# → { "path": "…", "apagado": true }
+```
+
+Só aceita um `path` que a própria rota entregou (`AAAA-MM/<número>-<nome>.mp4`).
+Precisa da migração `supabase/migrations/00028_central_reels.sql`.
+
 ## 4. Estado de um flow criado pela porta
 
 ```bash

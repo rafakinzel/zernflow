@@ -30,6 +30,7 @@ type Db = SupabaseClient<Database>;
 
 export const ISCAS_BUCKET = "iscas";
 export const MAX_PDF_BYTES = 50 * 1024 * 1024;
+export const REELS_BUCKET = "reels";
 
 export class ConflictError extends Error {
   constructor(
@@ -455,4 +456,51 @@ function isPdf(bytes: Uint8Array): boolean {
     bytes[3] === 0x46 &&
     bytes[4] === 0x2d
   );
+}
+
+/**
+ * Where a finished Reel goes in the `reels` bucket: month folder, a
+ * timestamp so nothing is ever overwritten, and a slug of the name.
+ */
+export function reelPath(fileName: string, now = new Date()): string {
+  const base = fileName
+    .replace(/\.mp4$/i, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "reel";
+  const month = now.toISOString().slice(0, 7);
+  return `${month}/${now.getTime()}-${base}.mp4`;
+}
+
+/** A path this API handed out, and nothing else (no `..`, no other folder). */
+export function isReelPath(path: string): boolean {
+  return /^\d{4}-\d{2}\/\d+-[a-z0-9-]+\.mp4$/.test(path);
+}
+
+/**
+ * A one-time upload address for a finished Reel. Videos are always bigger
+ * than the ~4.5 MB Vercel lets through, so the routine PUTs the MP4 straight
+ * to Storage; the public link is known in advance.
+ */
+export async function createReelUploadUrl(db: Db, fileName: string) {
+  if (!fileName?.trim()) throw new InputError("fileName é obrigatório.");
+  const path = reelPath(fileName);
+  const { data, error } = await db.storage
+    .from(REELS_BUCKET)
+    .createSignedUploadUrl(path);
+  if (error || !data) throw new Error(error?.message ?? "Could not create the upload URL.");
+
+  const { data: pub } = db.storage.from(REELS_BUCKET).getPublicUrl(path);
+  return { path, uploadUrl: data.signedUrl, publicUrl: pub.publicUrl };
+}
+
+/** Removes a Reel once it is out on Instagram. */
+export async function deleteReel(db: Db, path: string) {
+  if (!isReelPath(path ?? "")) throw new InputError("path inválido.");
+  const { error } = await db.storage.from(REELS_BUCKET).remove([path]);
+  if (error) throw new Error(error.message);
+  return { path, apagado: true };
 }
