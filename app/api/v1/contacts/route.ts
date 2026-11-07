@@ -32,7 +32,11 @@ export async function GET(request: NextRequest) {
     .range(offset, offset + limit - 1);
 
   if (search) {
-    query = query.or(`display_name.ilike.%${search}%,email.ilike.%${search}%`);
+    // The text goes inside a PostgREST filter string, where commas and
+    // parentheses would let it add filters of its own. Quoting the value makes
+    // it one value; backslashes and quotes inside are escaped for the quote.
+    const term = search.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    query = query.or(`display_name.ilike."%${term}%",email.ilike."%${term}%"`);
   }
 
   if (subscribed === "true") {

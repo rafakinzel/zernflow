@@ -131,3 +131,21 @@ pending. We spoke last and they did not come back: abandoned. A session
 waiting with a job scheduled is neither. Both directions must be in the
 table for this to mean anything, which is why the backfill brings back our
 own replies and not only theirs.
+
+## Security notes (review of 07/11/2026)
+
+- `scheduled_jobs` is server-only (migration 00029): no policy for signed-in
+  users. Anything that schedules a job uses the service client, after its own
+  session and membership check (see the broadcast send route).
+- Cron routes use `lib/cron-auth.ts` (constant-time). Call them with
+  `Authorization: Bearer <CRON_SECRET>`; `?key=` still works for the old
+  scheduler but puts the secret in logs, so move callers off it.
+- The httpRequest block encodes lead-typed values (URL) and escapes them (JSON
+  body), never calls internal hosts (`refuseHttpTarget`), and gives up after
+  10 s. `HTTP_REQUEST_ALLOWED_HOSTS` narrows it to listed hosts when set.
+- The Zernio webhook answers every refusal with the same 401, unknown account
+  included, and runs the own-account loop checks only after the signature.
+- Still open on purpose: members can read `workspaces.webhook_secret`. Hiding the
+  column or limiting updates to the owner touches the settings, avatar and
+  ActiveCampaign screens; do it with those tested.
+

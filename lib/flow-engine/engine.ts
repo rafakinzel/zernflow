@@ -1165,15 +1165,79 @@ async function executeSetField(
   );
 }
 
+const HTTP_REQUEST_TIMEOUT_MS = 10_000;
+
+/** A value placed inside a JSON string in the body: quotes and newlines escaped. */
+function escapeJsonString(value: string): string {
+  return JSON.stringify(value).slice(1, -1);
+}
+
+/**
+ * Why a URL must not be called, or null when it may be.
+ *
+ * The block calls whatever URL the flow author wrote, so it must never reach
+ * our own network or the cloud metadata service (SSRF). An optional
+ * HTTP_REQUEST_ALLOWED_HOSTS (comma-separated) narrows it further to listed
+ * hosts; unset, any public http(s) host is allowed, as before.
+ */
+export function refuseHttpTarget(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return "invalid URL";
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return `protocol ${url.protocol} not allowed`;
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const internal =
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".internal") ||
+    host.endsWith(".local") ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host === "::" ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+    /^(fc|fd|fe80)/.test(host);
+  if (internal) return `internal host ${host}`;
+  const allowed = (process.env.HTTP_REQUEST_ALLOWED_HOSTS ?? "")
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+  if (allowed.length && !allowed.some((h) => host === h || host.endsWith(`.${h}`))) {
+    return `host ${host} is not in HTTP_REQUEST_ALLOWED_HOSTS`;
+  }
+  return null;
+}
+
 async function executeHttpRequest(
   data: HttpRequestNodeData,
   context: FlowExecutionContext
 ) {
   try {
-    const url = interpolateVariables(data.url, context.variables || {});
+    const vars = context.variables || {};
+    // What a lead typed must not reshape the request: values are encoded for
+    // the URL and escaped for the JSON body. A template that is nothing but a
+    // variable ("{{webhook_url}}") is the whole URL and is used as it is.
+    const wholeUrlIsVariable = /^\s*\{\{\w+(?:\.\w+)*\}\}\s*$/.test(data.url);
+    const url = interpolateVariables(
+      data.url,
+      vars,
+      wholeUrlIsVariable ? undefined : encodeURIComponent
+    );
     const body = data.body
-      ? interpolateVariables(data.body, context.variables || {})
+      ? interpolateVariables(data.body, vars, escapeJsonString)
       : undefined;
+
+    const refusal = refuseHttpTarget(url);
+    if (refusal) {
+      console.error(`[httpRequest] not called: ${refusal}`);
+      return;
+    }
 
     const response = await fetch(url, {
       method: data.method,
@@ -1182,6 +1246,8 @@ async function executeHttpRequest(
         ...data.headers,
       },
       body: data.method !== "GET" ? body : undefined,
+      // A slow endpoint must not hold the lead's conversation hostage.
+      signal: AbortSignal.timeout(HTTP_REQUEST_TIMEOUT_MS),
     });
 
     const responseData = await response.text();
@@ -1784,7 +1850,9 @@ async function nomeGuardado(
 
 function interpolateVariables(
   text: string,
-  variables: Record<string, unknown>
+  variables: Record<string, unknown>,
+  /** Applied to each value, never to the template: URL- or JSON-escaping. */
+  escape?: (value: string) => string
 ): string {
   // Supports dot paths ({{myvar.data.name}}) into object variables (e.g. parsed
   // httpRequest JSON responses). Unresolved paths leave the token literal.
@@ -1797,7 +1865,7 @@ function interpolateVariables(
       const asText =
         typeof value === "object" ? JSON.stringify(value) : String(value);
       if (asText === "") blankedOne = true;
-      return asText;
+      return escape ? escape(asText) : asText;
     }
   );
 

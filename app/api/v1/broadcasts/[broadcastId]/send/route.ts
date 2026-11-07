@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { scheduleBroadcastDelivery } from "@/lib/scheduler";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json, Platform } from "@/lib/types/database";
@@ -172,8 +172,10 @@ export async function POST(
     );
   }
 
-  // Schedule delivery
-  await scheduleBroadcastDelivery(supabase, broadcastId, recipientIds);
+  // Schedule delivery. scheduled_jobs is server-only (no policy lets a signed
+  // in user read or write it), so the jobs are written with the service
+  // client, and only after the session and workspace membership above passed.
+  await scheduleBroadcastDelivery(await createServiceClient(), broadcastId, recipientIds);
 
   return NextResponse.json({
     broadcastId,
