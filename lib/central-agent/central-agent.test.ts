@@ -517,6 +517,10 @@ const routeDir = join(ROOT, "app", "api", "v1", "central");
  */
 const DM_FILES = [
   join(routeDir, "conversas", "route.ts"),
+  // The stopped-flows door reads sessions and conversations; its own guard is
+  // in fluxos-parados.test.ts and is stricter: it writes nothing at all.
+  join(routeDir, "fluxos-parados", "route.ts"),
+  join(ROOT, "lib", "central-agent", "fluxos-parados.ts"),
   join(routeDir, "responder", "route.ts"),
   join(ROOT, "lib", "central-agent", "dm.ts"),
   join(ROOT, "lib", "central-agent", "dm-store.ts"),
@@ -541,6 +545,7 @@ describe("what the door can never do", () => {
       "flows/[flowId]/route.ts GET",
       "flows/checar/route.ts POST",
       "flows/route.ts POST",
+      "fluxos-parados/route.ts GET",
       "iscas/route.ts POST",
       "keywords/route.ts GET",
       "mapa/route.ts GET",

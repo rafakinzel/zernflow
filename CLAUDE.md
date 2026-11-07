@@ -52,6 +52,16 @@ and refuses anything ambiguous, because a wrong match walks someone down the
 wrong branch without anybody noticing. Unmatched text hands the conversation to
 a human unless the flow draws its own `reply` exit.
 
+On a step that offers a single button (a "shall we?"), a reply that only says
+"go on" follows that button, courtesy included: "Olá Thiago! Obrigada pelo
+retorno. Tá joia, pode perguntar!" is a yes (`ASSENT` and `ASSENT_COMPANY`).
+A question mark, a refusal, any word outside those lists or a long message
+still goes to a person. Never widen this to steps with a real choice.
+
+Every hand-over is listed, read-only, at `GET /api/v1/central/fluxos-parados`
+so the Central can tell Rafa. The Central door never resumes a run or lifts a
+pause (see the guards in `lib/central-agent/*.test.ts`).
+
 ## Messaging window
 
 Meta allows a message within 24 hours of the person's last action. Waits are

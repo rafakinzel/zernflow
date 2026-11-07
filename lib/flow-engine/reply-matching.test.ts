@@ -140,6 +140,44 @@ describe("resolveReply", () => {
     }
   });
 
+  it("takes a courteous yes as carrying on, when there is only one way on", () => {
+    // The real reply that stalled a #fa lead on 07/11/2026.
+    const only = [{ payload: "GO", title: "Claro, vamos lá 🔥" }];
+    for (const text of [
+      "Olá Thiago! Obrigada pelo retorno. Tá joia, pode perguntar!",
+      "oi! pode mandar",
+      "Bom dia, claro, pode sim",
+      "Obrigado! Bora 🔥",
+      "manda aí, beleza",
+    ]) {
+      expect(resolveReply({ text, options: only, hasCatchAll: false })).toEqual({
+        kind: "follow",
+        handle: "GO",
+      });
+    }
+  });
+
+  it("does not stretch courtesy into a refusal, a question or a story", () => {
+    const only = [{ payload: "GO", title: "Claro, vamos lá 🔥" }];
+    for (const text of [
+      "Obrigada, mas agora não posso",
+      "Olá Thiago, pode perguntar, mas quanto custa?",
+      "oi tudo bem? pode sim",
+      "obrigada pelo retorno",
+      "Oi Thiago, sim, eu queria saber se você atende quem mora em Perth também",
+    ]) {
+      expect(resolveReply({ text, options: only, hasCatchAll: false })).toEqual({
+        kind: "human",
+      });
+    }
+  });
+
+  it("never reads a courteous yes as a choice between buttons", () => {
+    expect(
+      resolveReply({ text: "Olá Thiago, pode sim, obrigada!", options, hasCatchAll: false })
+    ).toEqual({ kind: "human" });
+  });
+
   it("still sends a question to a person, even with one way on", () => {
     const only = [{ payload: "GO", title: "Claro, vamos lá 🔥" }];
     expect(
