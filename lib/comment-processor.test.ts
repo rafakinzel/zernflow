@@ -95,6 +95,7 @@ const commentTrigger = {
 function fakeDb({ alreadyLogged = false } = {}) {
   const calls: string[] = [];
   const commentLogRows: Record<string, unknown>[] = [];
+  const conversationRows: Record<string, unknown>[] = [];
 
   const client = {
     from(table: string) {
@@ -144,6 +145,7 @@ function fakeDb({ alreadyLogged = false } = {}) {
         upsert: (row: Record<string, unknown>) => {
           calls.push(`upsert:${table}`);
           if (table === "comment_logs") commentLogRows.push(row);
+          if (table === "conversations") conversationRows.push(row);
           return {
             select: () => ({
               single: () =>
@@ -159,7 +161,7 @@ function fakeDb({ alreadyLogged = false } = {}) {
     },
   };
 
-  return { client: client as never, calls, commentLogRows };
+  return { client: client as never, calls, commentLogRows, conversationRows };
 }
 
 describe("processComment", () => {
@@ -223,6 +225,29 @@ describe("processComment", () => {
       matched_trigger_id: "trg-1",
       dm_sent: true,
     });
+  });
+
+  it("hands a paused conversation back to the bot when the keyword is commented", async () => {
+    // A lead whose conversation was handed to a person commented the keyword
+    // again, got the first message and then nothing: her replies met a
+    // paused conversation. The keyword is the request for the flow.
+    const db = fakeDb();
+    executeFlowMock.mockResolvedValue(undefined);
+
+    await processComment({
+      supabase: db.client,
+      channel: channelRow,
+      comment: {
+        id: "c-2",
+        postId: "post-9",
+        text: "quero",
+        author: { id: "ig-1" },
+      },
+    });
+
+    expect(db.conversationRows).toHaveLength(1);
+    expect(db.conversationRows[0]).toMatchObject({ is_automation_paused: false });
+    expect(executeFlowMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not run the flow twice for a redelivered comment", async () => {
