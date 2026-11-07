@@ -416,6 +416,60 @@ Recusas (nada é mandado), sempre com `erro` em português e um `motivo` fixo:
 Sem a chave de acesso: `401` com `{ "error": "Unauthorized" }`, como nas
 outras rotas.
 
+## 7. Fluxos que pararam para esperar uma pessoa (só leitura)
+
+```bash
+curl -s "$BASE/api/v1/central/fluxos-parados?dias=7"
+```
+
+Quando a pessoa digita algo que os botões não cobrem, o motor entende que é
+uma pergunta para um humano: pausa a automação da conversa e encerra o fluxo
+(`handOverToHuman` em `lib/flow-engine/engine.ts`). Ninguém era avisado, e
+foi assim que uma lead que respondeu "Tá joia, pode perguntar!" ao primeiro
+passo do #fa ficou sem resposta (07/11/2026). Esta rota lista essas paradas
+para a Central avisar a Rafa.
+
+- `dias`: paradas dos últimos N dias. Padrão 2, máximo 60.
+
+Resposta:
+
+```json
+{
+  "geradoEm": "2026-11-07T12:00:00.000Z",
+  "dias": 7,
+  "parados": [
+    {
+      "sessao": "…",
+      "conversa": "0512…",
+      "fluxo": { "id": "…", "nome": "Financial Adviser (#fa)" },
+      "passo": { "id": "…", "mensagem": "Olá …! Vi que você quer saber mais…", "botoes": [{ "payload": "…", "titulo": "Claro, vamos lá 🔥" }] },
+      "digitou": "Olá Thiago! Obrigada pelo retorno. Tá joia, pode perguntar!",
+      "parou_em": "2026-11-07T10:02:37.000Z",
+      "pausada": true,
+      "alguem_respondeu": false,
+      "retomado": false,
+      "janela_aberta": true,
+      "janela_fecha_em": "2026-11-08T10:02:36.694Z",
+      "retomavel": true,
+      "motivo_nao_retomavel": null
+    }
+  ]
+}
+```
+
+- `retomavel: true` quer dizer que a pessoa ainda está esperando: a conversa
+  continua pausada, ninguém respondeu à mão e a janela de 24 horas está
+  aberta. Os outros casos vêm com `motivo_nao_retomavel`: `ja_retomado` (um
+  fluxo novo já começou para ela), `alguem_respondeu`, `nao_esta_pausada`,
+  `passo_sem_botao` ou `fora_da_janela`.
+- `alguem_respondeu` olha o que o servidor registrou. Resposta digitada direto
+  no app do Instagram só chega aqui pelo backfill, então confira também a rota
+  5 (`direcao: "pessoa"` depois de `parou_em`).
+- A porta **só lê**: ela não retoma o fluxo nem tira a pausa. Quem devolve a
+  conversa ao robô é uma pessoa, no inbox, no botão "Bot paused · resume".
+  Para uma dúvida de verdade, a Central prepara a resposta para a Rafa
+  aprovar e mandar.
+
 ## Como o flow entra no ar
 
 Só pela Rafa: ela abre o flow no construtor, revisa e clica em Publicar. A

@@ -111,10 +111,45 @@ const ASSENT = new Set([
   "yes", "yep", "yeah", "sure", "ready", "go", "please",
 ]);
 
-/** True when a reply says only "go on". */
+/**
+ * Words that sit around a "go on" without changing it: the go-ahead itself
+ * ("pode perguntar", "manda aí") and the courtesy people wrap it in ("olá
+ * Thiago, obrigada pelo retorno").
+ *
+ * People rarely answer a single "shall we?" with one bare word. A lead who
+ * commented #fa answered the first message of the adviser flow, which offers
+ * only "Claro, vamos lá", with "Olá Thiago! Obrigada pelo retorno. Tá joia,
+ * pode perguntar!" and was handed to a person nobody told, so she waited
+ * unanswered. None of these words can refuse or ask anything, so a reply made
+ * only of them plus at least one ASSENT word still says only "go on".
+ */
+const ASSENT_COMPANY = new Set([
+  // the go-ahead
+  "perguntar", "pergunta", "manda", "mandar", "segue", "seguir", "continua",
+  "continuar", "la", "ai", "entao", "pois", "certeza", "tudo", "joia", "ta",
+  "perfeito", "otimo", "legal", "show", "massa", "bom", "boa",
+  // greeting and thanks
+  "ola", "oi", "oie", "oii", "opa", "hey", "hi", "hello", "dia", "tarde",
+  "noite", "obrigada", "obrigado", "obg", "brigada", "brigado", "valeu",
+  "vlw", "thanks", "thank", "you", "pelo", "retorno", "contato", "mensagem",
+  "thiago",
+]);
+
+/** The longest courteous "go on" still read as one; longer is a message. */
+const MAX_COURTEOUS_ASSENT_WORDS = 14;
+
+/** True when a reply says only "go on", with or without courtesy around it. */
 function isAssent(text: string): boolean {
+  // A question mark is a question, however friendly the rest of it is.
+  if (text.includes("?")) return false;
   const words = meaningfulWords(text);
-  return words.length > 0 && words.length <= 3 && words.every((w) => ASSENT.has(w));
+  if (words.length === 0) return false;
+  if (words.length <= 3 && words.every((w) => ASSENT.has(w))) return true;
+  return (
+    words.length <= MAX_COURTEOUS_ASSENT_WORDS &&
+    words.some((w) => ASSENT.has(w)) &&
+    words.every((w) => ASSENT.has(w) || ASSENT_COMPANY.has(w))
+  );
 }
 
 export interface ReplyResolution {
