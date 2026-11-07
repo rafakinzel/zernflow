@@ -72,6 +72,16 @@ keyword lifts a pause (`restartFromKeyword`); a commented keyword does too
 (the conversation upsert in `comment-processor.ts`). Nothing limits a flow to
 once per person; do not add such a limit.
 
+## Calling someone by name
+
+Rafa's rule (07/11/2026): `{{first_name}}` is only the name the person told us
+in a flow that asks for it (the stored `first_name` field). The Instagram
+profile name is never used: it was often missing, and the bot greeted people by
+their @. Without a stored name the variable is blank and the line is tidied so
+everybody gets the same message with no name ("Olá {{first_name}}!" → "Olá!",
+"{{first_name}}, notei…" → "Notei…"). See `lib/flow-engine/contact-name.ts`.
+Resumed runs re-read the stored name, so an old run's saved @ is not reused.
+
 ## Messaging window
 
 Meta allows a message within 24 hours of the person's last action. Waits are

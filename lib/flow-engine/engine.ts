@@ -1,3 +1,4 @@
+import { arrumarSemNome, nomeParaChamar } from "./contact-name";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import type {
@@ -79,12 +80,10 @@ export async function executeFlow(
     context.variables.payload = tappedPayload;
   }
 
-  // Seed what this contact has already told us, then fall back to the profile
-  // name. A flow that asked "what's your name?" three weeks ago must not greet
-  // the person by their @ today, so a stored field outranks the platform
-  // profile. full_name is the guard because it is always set below: when it is
-  // present the variables were restored from the session and the read is moot.
-  if (!context.variables.full_name) {
+  // Seed what this contact has already told us. full_name is the guard
+  // because it is always set below: when it is present the variables were
+  // restored from the session and the read is moot.
+  if (context.variables.full_name === undefined) {
     const { data: profile } = await supabase
       .from("contacts")
       .select(
@@ -106,17 +105,13 @@ export async function executeFlow(
       if (!context.variables[slug]) context.variables[slug] = value;
     }
 
-    const displayName = profile?.display_name?.trim();
-    // A contact with no name and no username falls back to the raw platform
-    // id, which must never be greeted as a name ("Opa 17829384562, vamos").
-    // Seed blanks instead, and interpolation tidies the leftover punctuation.
-    const usable = displayName && !/^\d{5,}$/.test(displayName);
-    if (!context.variables.full_name) {
-      context.variables.full_name = usable ? displayName : "";
-    }
-    if (!context.variables.first_name) {
-      context.variables.first_name = usable ? displayName.split(/\s+/)[0] : "";
-    }
+    // Called by name only when they told us their name in a flow that asks
+    // (the stored first_name field, read above). The profile name is never
+    // used: it is often missing, and then the bot greeted people by their @.
+    // Without a stored name the variables are blank, and interpolation tidies
+    // the line so everybody gets the same message without a name.
+    context.variables.first_name = nomeParaChamar(context.variables);
+    if (!context.variables.full_name) context.variables.full_name = "";
   }
 
   // A matched trigger means the contact sent the keyword, which reads as
@@ -305,6 +300,10 @@ export async function resumeSession(
   }
 
   context.variables = (session.variables as Record<string, string>) || {};
+  // A run started before the name rule carries the profile name (often the
+  // @) in its saved variables. The stored first_name is the only name to use,
+  // so read it again on every resume.
+  context.variables.first_name = await nomeGuardado(supabase, context.contactId);
 
   // The resume is driven by a fresh reply; make {{message}} reflect it. A tap
   // on a button or quick reply carries no text, so fall back to its payload —
@@ -1765,6 +1764,24 @@ function resolveVariablePath(
   return value;
 }
 
+/** The first name the contact told us in a flow, or "" when they never did. */
+async function nomeGuardado(
+  supabase: SupabaseClient<Database>,
+  contactId: string
+): Promise<string> {
+  const { data } = await supabase
+    .from("contacts")
+    .select("contact_custom_fields(value, custom_field_definitions(slug))")
+    .eq("id", contactId)
+    .maybeSingle();
+  const fields = (data?.contact_custom_fields ?? []) as Array<{
+    value: string | null;
+    custom_field_definitions: { slug: string } | null;
+  }>;
+  const stored = fields.find((f) => f.custom_field_definitions?.slug === "first_name");
+  return nomeParaChamar({ first_name: stored?.value ?? "" });
+}
+
 function interpolateVariables(
   text: string,
   variables: Record<string, unknown>
@@ -1787,10 +1804,7 @@ function interpolateVariables(
   // A variable that resolved to nothing leaves "Opa , vamos" or a double
   // space behind. Tidy only in that case, so ordinary copy is never touched.
   if (!blankedOne) return replaced;
-  return replaced
-    .replace(/[ \t]+([,.!?;:])/g, "$1")
-    .replace(/[ \t]{2,}/g, " ")
-    .trim();
+  return arrumarSemNome(replaced);
 }
 
 
