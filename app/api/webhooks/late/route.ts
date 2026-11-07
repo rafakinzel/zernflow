@@ -86,10 +86,8 @@ export async function POST(request: NextRequest) {
     return await handleWebhook(request);
   } catch (err) {
     console.error("Webhook handler error:", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Internal server error" },
-      { status: 500 }
-    );
+    // The detail goes to the log only; callers get nothing internal.
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -156,25 +154,10 @@ async function handleWebhook(request: NextRequest) {
     .eq("is_active", true)
     .single();
 
+  // Same answer as a bad signature: a caller without the secret must not be
+  // able to tell which accounts are connected. (Zernio drops a 4xx either way.)
   if (!channel) {
-    return NextResponse.json({ error: "Channel not found" }, { status: 404 });
-  }
-
-  // Prevent loops: if the sender is another connected account in this
-  // workspace, skip. This happens when both sides of a DM conversation
-  // are connected (e.g. during testing).
-  if (msg.sender.username) {
-    const { data: senderChannel } = await supabase
-      .from("channels")
-      .select("id")
-      .eq("workspace_id", channel.workspace_id)
-      .eq("username", msg.sender.username)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (senderChannel) {
-      return NextResponse.json({ ok: true, skipped: true, reason: "sender_is_own_account" });
-    }
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // Verify HMAC-SHA256 signature against the workspace-level secret
@@ -189,10 +172,28 @@ async function handleWebhook(request: NextRequest) {
     console.error(
       `[webhook] no signing secret for workspace ${channel.workspace_id}; refusing the delivery.`
     );
-    return NextResponse.json({ error: "Webhook not configured" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   if (!verifyWebhookSignature(secret, body, signature)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Prevent loops (checked only once the signature is good, so an unsigned
+  // caller learns nothing about which accounts are connected): if the sender is another connected account in this
+  // workspace, skip. This happens when both sides of a DM conversation
+  // are connected (e.g. during testing).
+  if (msg.sender.username) {
+    const { data: senderChannel } = await supabase
+      .from("channels")
+      .select("id")
+      .eq("workspace_id", channel.workspace_id)
+      .eq("username", msg.sender.username)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (senderChannel) {
+      return NextResponse.json({ ok: true, skipped: true, reason: "sender_is_own_account" });
+    }
   }
 
   if (!(await claimWebhookEvent(supabase, eventId))) {
@@ -522,8 +523,22 @@ async function handleCommentWebhook(
     .eq("is_active", true)
     .single();
 
+  // Same answer as a bad signature: a caller without the secret must not be
+  // able to tell which accounts are connected. (Zernio drops a 4xx either way.)
   if (!channel) {
-    return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Fail closed, for the same reason as the message path above.
+  const secret = await resolveWebhookSecret(supabase, channel);
+  if (!secret) {
+    console.error(
+      `[webhook] no signing secret for workspace ${channel.workspace_id}; refusing the delivery.`
+    );
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!verifyWebhookSignature(secret, rawBody, signature)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // Prevent loops: our own comments (e.g. the configured public reply) also
@@ -533,18 +548,6 @@ async function handleCommentWebhook(
     payload.comment.author.username === channel.username
   ) {
     return NextResponse.json({ ok: true, skipped: true, reason: "own_comment" });
-  }
-
-  // Fail closed, for the same reason as the message path above.
-  const secret = await resolveWebhookSecret(supabase, channel);
-  if (!secret) {
-    console.error(
-      `[webhook] no signing secret for workspace ${channel.workspace_id}; refusing the delivery.`
-    );
-    return NextResponse.json({ error: "Webhook not configured" }, { status: 401 });
-  }
-  if (!verifyWebhookSignature(secret, rawBody, signature)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
   if (!(await claimWebhookEvent(supabase, eventId))) {
