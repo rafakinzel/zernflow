@@ -533,6 +533,9 @@ const DM_FILES = [
   // in fluxos-parados.test.ts and is stricter: it writes nothing at all.
   join(routeDir, "fluxos-parados", "route.ts"),
   join(ROOT, "lib", "central-agent", "fluxos-parados.ts"),
+  // Same for the questions-typed-during-flows door (perguntas-no-fluxo.test.ts).
+  join(routeDir, "perguntas-no-fluxo", "route.ts"),
+  join(ROOT, "lib", "central-agent", "perguntas-no-fluxo.ts"),
   join(routeDir, "responder", "route.ts"),
   join(ROOT, "lib", "central-agent", "dm.ts"),
   join(ROOT, "lib", "central-agent", "dm-store.ts"),
@@ -561,6 +564,7 @@ describe("what the door can never do", () => {
       "iscas/route.ts POST",
       "keywords/route.ts GET",
       "mapa/route.ts GET",
+      "perguntas-no-fluxo/route.ts GET",
       "reels/route.ts POST,DELETE",
       "responder/route.ts POST",
     ]);

@@ -843,6 +843,8 @@ export interface Database {
           attempts?: number;
           last_error?: string | null;
           claimed_at?: string | null;
+          run_at?: string;
+          payload?: Json;
         };
         Relationships: [];
       };

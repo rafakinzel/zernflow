@@ -148,25 +148,25 @@ export function MessageThread({
   }, [conversation, statusUpdating, router]);
 
   /**
-   * Hands the conversation back to the automation.
-   *
-   * A flow pauses itself when someone asks a question it cannot answer, so a
-   * person can reply. Nothing used to switch it back on, which made every
-   * handover permanent: the contact stopped matching keywords and dropped out
-   * of every future flow with nothing on screen to explain it.
+   * Pauses the bot on this conversation, or hands it back from where it
+   * stopped (Rafa, 08/11/2026). Internal only: the lead sees nothing.
+   * While paused the run stays on its step and its scheduled messages are
+   * held; resuming sends them at the time they were due, or now if that
+   * passed. The bot never pauses itself on a question any more.
    */
-  const resumeAutomation = useCallback(async () => {
+  const setAutomationPaused = useCallback(async (paused: boolean) => {
     if (!conversation || resuming) return;
     setResuming(true);
     try {
-      const { error } = await createClient()
-        .from("conversations")
-        .update({ is_automation_paused: false })
-        .eq("id", conversation.id);
-      if (error) throw error;
+      const res = await fetch(`/api/v1/conversations/${conversation.id}/automation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paused }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
       router.refresh();
     } catch {
-      alert("Failed to resume the bot");
+      alert(paused ? "Failed to pause the bot" : "Failed to resume the bot");
     } finally {
       setResuming(false);
     }
@@ -345,18 +345,27 @@ export function MessageThread({
           >
             {conversation.status}
           </span>
-          {conversation.is_automation_paused && (
+          {conversation.is_automation_paused ? (
             <button
               type="button"
-              onClick={resumeAutomation}
+              onClick={() => setAutomationPaused(false)}
               disabled={resuming}
-              title="The bot stopped so you could answer. Click to hand this conversation back to it."
+              title="The bot is paused on this conversation. Click to resume it from where it stopped."
               className="flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700 transition-colors hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-950 dark:text-orange-300 dark:hover:bg-orange-900"
             >
-              {resuming ? (
-                <Loader2 className="h-2.5 w-2.5 animate-spin" />
-              ) : null}
+              {resuming ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : null}
               Bot paused · resume
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAutomationPaused(true)}
+              disabled={resuming}
+              title="Stop the bot on this conversation while you answer by hand. The lead sees nothing; resume later from where it stopped."
+              className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
+            >
+              {resuming ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : null}
+              Pause bot
             </button>
           )}
           <div className="flex items-center gap-1">

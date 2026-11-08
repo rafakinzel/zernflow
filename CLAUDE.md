@@ -49,18 +49,34 @@ the air.
 `lib/flow-engine/reply-matching.ts` decides what a typed reply means when a
 node was waiting with buttons. It matches the words on the buttons literally
 and refuses anything ambiguous, because a wrong match walks someone down the
-wrong branch without anybody noticing. Unmatched text hands the conversation to
-a human unless the flow draws its own `reply` exit.
+wrong branch without anybody noticing.
 
 On a step that offers a single button (a "shall we?"), a reply that only says
 "go on" follows that button, courtesy included: "Olá Thiago! Obrigada pelo
 retorno. Tá joia, pode perguntar!" is a yes (`ASSENT` and `ASSENT_COMPANY`).
-A question mark, a refusal, any word outside those lists or a long message
-still goes to a person. Never widen this to steps with a real choice.
+Never widen this to steps with a real choice.
 
-Every hand-over is listed, read-only, at `GET /api/v1/central/fluxos-parados`
-so the Central can tell Rafa. The Central door never resumes a run or lifts a
-pause (see the guards in `lib/central-agent/*.test.ts`).
+## A message typed in the middle of a flow (Rafa, 08/11/2026)
+
+Nothing pauses on its own. A message the step cannot read as an answer leaves
+the run exactly where it was, waiting for a tap or for its own deadline, and
+is recorded as `typed_during_flow` for the Central to answer
+(`GET /api/v1/central/perguntas-no-fluxo`). Typed during a timed Delay, same.
+See `lib/flow-engine/typed-during-flow.ts`.
+
+The one exception is a plain request to stop (`isStopRequest` in
+`opt-out.ts`): the run ends at once. It is deliberately narrow: the whole
+message, courtesy aside, must be a stop phrase, never a question, so "não sei
+se é pra mim" or "não quero agora" never end a run.
+
+Pausing is a person's decision: "Pause bot" in the inbox
+(`POST /api/v1/conversations/:id/automation`). While paused the run stays on
+its step and the cron holds its scheduled steps (`heldByPause`), keeping the
+time they were due in `payload.dueAt`; "resume" brings them back to that time,
+or to now if it passed. The lead sees none of it. A `humanTakeover` node drawn
+in a flow still ends the run on purpose; those are listed, read-only, at
+`GET /api/v1/central/fluxos-parados`. The Central door never resumes a run or
+lifts a pause (see the guards in `lib/central-agent/*.test.ts`).
 
 ## The first message of a comment flow
 
