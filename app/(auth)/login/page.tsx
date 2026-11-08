@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Eye, EyeOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -22,8 +22,40 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Second step: the 6-digit code from the authenticator app, asked only of
+  // people who enrolled one (lib/auth-policy.ts).
+  const [factorId, setFactorId] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  // "Forgot password?": Supabase emails a link that signs the person in and
+  // lands them on Settings > Security to choose a new password.
+  const [resetting, setResetting] = useState(false);
   const router = useRouter();
   const supabase = createClient();
+
+  /** Moves to the code step when this session still needs it; true if so. */
+  async function needsCode(): Promise<boolean> {
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal?.nextLevel !== "aal2" || aal.currentLevel === "aal2") return false;
+    const { data: factors } = await supabase.auth.mfa.listFactors();
+    const totp = factors?.totp?.find((f) => f.status === "verified");
+    if (!totp) return false;
+    setFactorId(totp.id);
+    return true;
+  }
+
+  useEffect(() => {
+    // Read once on arrival: the middleware sends people here with ?expirou=1
+    // (session too old) or ?codigo=1 (signed in, code still missing).
+    void (async () => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("expirou")) {
+        setNotice("For your security, sessions end after 30 days. Please sign in again.");
+      }
+      if (params.get("codigo")) await needsCode();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,8 +73,57 @@ export default function LoginPage() {
       return;
     }
 
+    if (await needsCode()) {
+      setLoading(false);
+      return;
+    }
+
     router.push("/dashboard");
     router.refresh();
+  }
+
+  async function handleCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!factorId) return;
+    setLoading(true);
+    setError(null);
+    const { error } = await supabase.auth.mfa.challengeAndVerify({
+      factorId,
+      code: code.replace(/\s/g, ""),
+    });
+    if (error) {
+      setError("That code did not work. Check the app and try the current code.");
+      setLoading(false);
+      return;
+    }
+    router.push("/dashboard");
+    router.refresh();
+  }
+
+  async function sendReset(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    const next = encodeURIComponent("/dashboard/settings");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/callback?next=${next}`,
+    });
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setNotice(
+      "If this email has an account, a link is on its way. Open it in this same browser, then choose a new password under Settings > Security."
+    );
+    setResetting(false);
+  }
+
+  async function startOver() {
+    await supabase.auth.signOut();
+    setFactorId(null);
+    setCode("");
+    setError(null);
   }
 
   const field =
@@ -76,6 +157,94 @@ export default function LoginPage() {
             Your flows, conversations and automations.
           </p>
 
+          {notice && (
+            <p className="mt-4 rounded-lg bg-primary/10 px-3 py-2 text-sm">{notice}</p>
+          )}
+
+          {resetting ? (
+            <form onSubmit={sendReset} className="mt-6 space-y-4">
+              <div>
+                <label htmlFor="reset-email" className="mb-1.5 block text-sm font-medium">
+                  Email
+                </label>
+                <input
+                  id="reset-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoFocus
+                  autoComplete="email"
+                  className={field}
+                  placeholder="you@example.com"
+                />
+              </div>
+              {error && (
+                <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={loading}
+                className="h-11 w-full rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+              >
+                {loading ? "Sending…" : "Email me a link"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setResetting(false)}
+                className="w-full text-center text-xs text-muted-foreground hover:text-foreground"
+              >
+                Back to sign in
+              </button>
+            </form>
+          ) : factorId ? (
+            <form onSubmit={handleCode} className="mt-6 space-y-4">
+              <div>
+                <label htmlFor="code" className="mb-1.5 block text-sm font-medium">
+                  Authenticator code
+                </label>
+                <input
+                  id="code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9 ]{6,7}"
+                  maxLength={7}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  required
+                  autoFocus
+                  className={field}
+                  placeholder="123 456"
+                />
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Open your authenticator app and type the 6-digit code for BorrelliChat.
+                </p>
+              </div>
+
+              {error && (
+                <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="h-11 w-full rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+              >
+                {loading ? "Checking…" : "Continue"}
+              </button>
+              <button
+                type="button"
+                onClick={startOver}
+                className="w-full text-center text-xs text-muted-foreground hover:text-foreground"
+              >
+                Use another account
+              </button>
+            </form>
+          ) : (
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
               <label htmlFor="email" className="mb-1.5 block text-sm font-medium">
@@ -143,7 +312,18 @@ export default function LoginPage() {
             >
               {loading ? "Signing in…" : "Sign in"}
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setResetting(true);
+                setError(null);
+              }}
+              className="w-full text-center text-xs text-muted-foreground hover:text-foreground"
+            >
+              Forgot password?
+            </button>
           </form>
+          )}
         </div>
 
         <p className="mt-5 text-center text-xs text-muted-foreground">

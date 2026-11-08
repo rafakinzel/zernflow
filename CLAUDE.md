@@ -150,3 +150,17 @@ own replies and not only theirs.
   column or limiting updates to the owner touches the settings, avatar and
   ActiveCampaign screens; do it with those tested.
 
+## Logging in (08/11/2026)
+
+- Two-step login with an authenticator app (TOTP, Supabase MFA). Enrolled in
+  Settings > Security. Once a person has a verified factor, a password-only
+  session (aal1) is sent to the code step on pages and gets 401 from the API
+  (`lib/supabase/middleware.ts`, rule in `lib/auth-policy.ts`), and the
+  database refuses it too: every RLS table carries the restrictive policy
+  "Require authenticator code when enrolled" (migration 00030). A new table
+  needs that policy as well.
+- Sessions end 30 days after sign-in (`MAX_SESSION_DAYS`), dated by the
+  session's own authentication timestamps.
+- Locked out (lost the phone, no second authenticator): remove the factor in
+  the Supabase dashboard, Authentication > Users > the user > MFA factors.
+
