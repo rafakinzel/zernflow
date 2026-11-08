@@ -84,6 +84,10 @@ export interface ProviderMessage {
   createdAt: string | null;
 }
 
+export type PrivateReplyButton =
+  | { type: "postback"; title: string; payload: string }
+  | { type: "url"; title: string; url: string };
+
 export interface MessagingProvider {
   /** Which transport this is, for logging and for provider-specific branches. */
   readonly name: "zernio" | "meta";
@@ -99,12 +103,18 @@ export interface MessagingProvider {
    * Sends a DM to a commenter from the comment context, which is the only way
    * to open a thread off a comment. Instagram allows exactly one of these per
    * comment, within 7 days of it.
+   *
+   * It can carry up to 3 buttons, or quick replies. Buttons are the ones to
+   * use for someone who does not follow the account: their DM lands in
+   * Message Requests, where quick replies are not shown.
    */
   sendPrivateReply(params: {
     accountId: string;
     postId: string;
     commentId: string;
     text: string;
+    buttons?: PrivateReplyButton[];
+    quickReplies?: Array<{ title: string; payload: string }>;
   }): Promise<void>;
 
   /** Posts a public reply under a comment. */

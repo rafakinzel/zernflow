@@ -13,6 +13,7 @@ import type Zernio from "@zernio/node";
 import { createZernioClient } from "@/lib/zernio-client";
 import type {
   MessagingProvider,
+  PrivateReplyButton,
   OutboundMessage,
   ProviderConversation,
   ProviderMessage,
@@ -76,15 +77,28 @@ export class ZernioProvider implements MessagingProvider {
     postId,
     commentId,
     text,
+    buttons,
+    quickReplies,
   }: {
     accountId: string;
     postId: string;
     commentId: string;
     text: string;
+    buttons?: PrivateReplyButton[];
+    quickReplies?: Array<{ title: string; payload: string }>;
   }): Promise<void> {
+    // Zernio takes one or the other, never both.
     await this.client.comments.sendPrivateReplyToComment({
       path: { postId, commentId },
-      body: { accountId, message: text },
+      body: {
+        accountId,
+        message: text,
+        ...(buttons?.length
+          ? { buttons }
+          : quickReplies?.length
+            ? { quickReplies }
+            : {}),
+      },
     });
   }
 
