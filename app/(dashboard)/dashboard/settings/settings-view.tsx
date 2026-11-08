@@ -22,6 +22,7 @@ import Link from "next/link";
 import { ActiveCampaignSection } from "@/components/settings/activecampaign-section";
 import { WorkspaceAvatar } from "@/components/settings/workspace-avatar";
 import { KeyRotation } from "@/components/settings/key-rotation";
+import { SecuritySection } from "@/components/settings/security-section";
 
 interface WorkspaceSettings {
   id: string;
@@ -187,6 +188,10 @@ export function SettingsView({
               />
             </div>
           </section>
+
+          <hr className="border-border" />
+
+          <SecuritySection />
 
           <hr className="border-border" />
 
