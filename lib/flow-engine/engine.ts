@@ -27,6 +27,7 @@ import {
   syncContact,
 } from "@/lib/activecampaign";
 import { executeAiResponse } from "./nodes/ai-response";
+import { privateReplyOptions } from "./private-reply-options";
 import { adaptMessage } from "./platform-adapter";
 import {
   MAX_NODE_INLINE_DELAY_MS,
@@ -732,18 +733,27 @@ async function sendFirstMessageAsPrivateReply(
   const first = data.messages[0];
   if (!first) return;
 
-  const text = interpolateVariables(
-    adaptMessage(first, context.platform ?? "instagram").text,
-    context.variables || {}
-  );
+  const adapted = adaptMessage(first, context.platform ?? "instagram");
+  const text = interpolateVariables(adapted.text, context.variables || {});
+  const target = {
+    accountId: lateAccountId,
+    postId: String(context.variables!.post_id),
+    commentId: String(context.variables!.comment_id),
+    text,
+  };
+  const options = privateReplyOptions(adapted);
 
   try {
-    await messaging.sendPrivateReply({
-      accountId: lateAccountId,
-      postId: String(context.variables!.post_id),
-      commentId: String(context.variables!.comment_id),
-      text,
-    });
+    try {
+      await messaging.sendPrivateReply({ ...target, ...options });
+    } catch (error) {
+      // A comment allows one private reply, and a refused one was not sent:
+      // retry once as plain text so the person still hears back. The flow
+      // reads a typed reply at this step, so it can still carry on.
+      if (!options.buttons && !options.quickReplies) throw error;
+      console.error("Private reply with buttons refused; sending text only:", error);
+      await messaging.sendPrivateReply(target);
+    }
 
     await supabase.from("messages").insert({
       conversation_id: context.conversationId,

@@ -96,6 +96,31 @@ describe("ZernioProvider comment replies", () => {
     });
   });
 
+  it("sends the private reply's buttons, and only buttons when both are given", async () => {
+    const privateReply = vi.fn().mockResolvedValue({});
+    const provider = new ZernioProvider(
+      fakeClient({ comments: { sendPrivateReplyToComment: privateReply } })
+    );
+
+    await provider.sendPrivateReply({
+      accountId: "acc-1",
+      postId: "p-1",
+      commentId: "c-1",
+      text: "Quer?",
+      buttons: [{ type: "postback", title: "SIM, manda!", payload: "SIM" }],
+      quickReplies: [{ title: "x", payload: "x" }],
+    });
+
+    expect(privateReply).toHaveBeenCalledWith({
+      path: { postId: "p-1", commentId: "c-1" },
+      body: {
+        accountId: "acc-1",
+        message: "Quer?",
+        buttons: [{ type: "postback", title: "SIM, manda!", payload: "SIM" }],
+      },
+    });
+  });
+
   it("posts a public reply with the comment id in the body, not the path", async () => {
     const reply = vi.fn().mockResolvedValue({});
     const provider = new ZernioProvider(

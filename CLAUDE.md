@@ -62,6 +62,15 @@ Every hand-over is listed, read-only, at `GET /api/v1/central/fluxos-parados`
 so the Central can tell Rafa. The Central door never resumes a run or lifts a
 pause (see the guards in `lib/central-agent/*.test.ts`).
 
+## The first message of a comment flow
+
+It goes out as Instagram's private reply to the comment, and it carries the
+node's buttons (`private-reply-options.ts`): up to 3 as buttons, quick replies
+turned into postback buttons so a non-follower sees them in Message Requests.
+If the platform refuses the version with buttons, the same text goes again
+without them. Until 08/11/2026 it went as bare text and the drawn button never
+reached anyone.
+
 ## The keyword always starts over
 
 Rafa's rule (07/11/2026): whoever sends a flow's keyword, by comment, DM or
