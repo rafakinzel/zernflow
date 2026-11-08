@@ -36,7 +36,7 @@ function wasSessionWrittenRecently(updatedAt: string): boolean {
 /**
  * Cron job handler that processes scheduled jobs.
  * Call via Vercel Cron or external cron every 10-30 seconds.
- * GET /api/cron/jobs?key=CRON_SECRET
+ * GET /api/cron/jobs with Authorization: Bearer CRON_SECRET
  */
 export async function GET(request: NextRequest) {
   if (!isCronAuthorized(request)) {
