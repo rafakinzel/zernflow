@@ -137,9 +137,10 @@ own replies and not only theirs.
 - `scheduled_jobs` is server-only (migration 00029): no policy for signed-in
   users. Anything that schedules a job uses the service client, after its own
   session and membership check (see the broadcast send route).
-- Cron routes use `lib/cron-auth.ts` (constant-time). Call them with
-  `Authorization: Bearer <CRON_SECRET>`; `?key=` still works for the old
-  scheduler but puts the secret in logs, so move callers off it.
+- Cron routes use `lib/cron-auth.ts` (constant-time) and take the secret only
+  from `Authorization: Bearer <CRON_SECRET>`; `?key=` is refused. The caller
+  is cron-job.org (jobs every minute, sequences every 5), moved to the header
+  on 08/11/2026. If the cron ever starts failing with 401, check its header.
 - The httpRequest block encodes lead-typed values (URL) and escapes them (JSON
   body), never calls internal hosts (`refuseHttpTarget`), and gives up after
   10 s. `HTTP_REQUEST_ALLOWED_HOSTS` narrows it to listed hosts when set.
