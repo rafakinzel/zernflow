@@ -117,6 +117,12 @@ export async function GET(request: NextRequest) {
       continue;
     }
 
+    // Held while the team has the bot paused on this conversation: the step
+    // is neither sent nor dropped, only pushed back, and keeps the time it
+    // was due so "resume" can bring it back exactly where it stopped
+    // (POST /api/v1/conversations/:id/automation).
+    if (await heldByPause(supabase, job)) continue;
+
     // Mark as processing; .select() returns the updated row so we can verify
     // the claim (overlapping cron runs would otherwise both process the job).
     // Matching attempts too makes this a CAS: once another run bumps attempts,
@@ -696,4 +702,34 @@ async function settleBroadcastIfDone(
       .eq("id", broadcastId)
       .eq("status", "sending");
   }
+}
+
+const FLOW_JOB_TYPES = new Set(["resume_flow", "smart_delay_timeout"]);
+const HOLD_RECHECK_MS = 10 * 60 * 1000;
+
+async function heldByPause(
+  supabase: Awaited<ReturnType<typeof createServiceClient>>,
+  job: { id: string; type: string; status: string; payload: Json; run_at: string }
+): Promise<boolean> {
+  if (job.status !== "pending" || !FLOW_JOB_TYPES.has(job.type)) return false;
+  const payload = (job.payload ?? {}) as Record<string, unknown>;
+  const conversationId = payload.conversationId;
+  if (typeof conversationId !== "string") return false;
+
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("is_automation_paused")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (!conversation?.is_automation_paused) return false;
+
+  await supabase
+    .from("scheduled_jobs")
+    .update({
+      run_at: new Date(Date.now() + HOLD_RECHECK_MS).toISOString(),
+      payload: { ...payload, dueAt: payload.dueAt ?? job.run_at } as unknown as Json,
+    })
+    .eq("id", job.id)
+    .eq("status", "pending");
+  return true;
 }

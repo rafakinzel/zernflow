@@ -28,6 +28,8 @@ import {
 } from "@/lib/activecampaign";
 import { executeAiResponse } from "./nodes/ai-response";
 import { privateReplyOptions } from "./private-reply-options";
+import { isStopRequest } from "./opt-out";
+import { handleTypedDuringFlow } from "./typed-during-flow";
 import { adaptMessage } from "./platform-adapter";
 import {
   MAX_NODE_INLINE_DELAY_MS,
@@ -336,22 +338,24 @@ export async function resumeSession(
     );
   }
 
-  // The contact replied, so no pending job for this run may fire later. The
+  // The contact answered, so no pending job for this run may fire later. The
   // give-up job would push them down the "no reply" branch mid-conversation,
   // and a timed Delay's resume job would carry on from where the run was
   // parked, so the person would get both that path and the one they chose.
-  await supabase
-    .from("scheduled_jobs")
-    .delete()
-    .in("type", ["smart_delay_timeout", "resume_flow"])
-    .eq("status", "pending")
-    .contains("payload", { sessionId: session.id });
-
-  // Update session
-  await supabase
-    .from("flow_sessions")
-    .update({ waiting_for_input: false, waiting_until: null })
-    .eq("id", session.id);
+  // Called only once the reply is known to move the run: a message the step
+  // cannot read leaves the wait, and its deadline, exactly as they were.
+  const leaveTheWait = async () => {
+    await supabase
+      .from("scheduled_jobs")
+      .delete()
+      .in("type", ["smart_delay_timeout", "resume_flow"])
+      .eq("status", "pending")
+      .contains("payload", { sessionId: session.id });
+    await supabase
+      .from("flow_sessions")
+      .update({ waiting_for_input: false, waiting_until: null })
+      .eq("id", session.id);
+  };
 
   // Continue from current node
   const currentNode = nodes.find((n) => n.id === session.current_node_id);
@@ -390,8 +394,36 @@ export async function resumeSession(
     hasCatchAll: outgoing.some((e) => e.sourceHandle === "reply"),
   });
 
+  // A request to stop ends the run whatever the step offered; it is never a
+  // button's words, so it cannot steal a real answer.
+  if (!tapped && isStopRequest(typed)) {
+    await handleTypedDuringFlow(supabase, {
+      workspaceId: context.workspaceId,
+      contactId: context.contactId,
+      conversationId: context.conversationId,
+      sessionId: session.id,
+      flowId: context.flowId,
+      nodeId: currentNode.id,
+      text: typed ?? "",
+    });
+    return;
+  }
+
+  // Not an answer to this step: the run keeps waiting where it is, on its own
+  // deadline, and the message is noted for the Central to answer. Nothing
+  // pauses (Rafa, 08/11/2026); pausing is a person's decision in the inbox.
   if (resolution.kind === "human") {
-    await handOverToHuman(supabase, context, session.id, currentNode.id, typed ?? "");
+    if (typed) {
+      await handleTypedDuringFlow(supabase, {
+        workspaceId: context.workspaceId,
+        contactId: context.contactId,
+        conversationId: context.conversationId,
+        sessionId: session.id,
+        flowId: context.flowId,
+        nodeId: currentNode.id,
+        text: typed,
+      });
+    }
     return;
   }
 
@@ -431,9 +463,17 @@ export async function resumeSession(
     const owner = await resolveOffNodeTap(supabase, nodes, edges, context, answered);
     if (!owner) {
       // A payload this flow does not route, usually a button from a version
-      // that has since been edited. Guessing a branch is worse than silence,
-      // and a person can read what they wanted.
-      await handOverToHuman(supabase, context, session.id, currentNode.id, typed ?? answered);
+      // that has since been edited. Guessing a branch is worse than silence:
+      // the run keeps waiting and a person can read what they wanted.
+      await handleTypedDuringFlow(supabase, {
+        workspaceId: context.workspaceId,
+        contactId: context.contactId,
+        conversationId: context.conversationId,
+        sessionId: session.id,
+        flowId: context.flowId,
+        nodeId: currentNode.id,
+        text: typed ?? answered,
+      });
       return;
     }
 
@@ -443,6 +483,7 @@ export async function resumeSession(
       return;
     }
 
+    await leaveTheWait();
     console.info(
       `[engine] ${answered} tapped from ${owner.nodeId} while parked on ${currentNode.id}; following the button`
     );
@@ -454,6 +495,8 @@ export async function resumeSession(
     await traverseNodes(supabase, session.id, changedMind, nodes, edges, context, 0);
     return;
   }
+
+  await leaveTheWait();
 
   // Get next node after the current one. A Smart Delay with a timeout has two
   // outputs, so a reply must follow the "replied" one and never fall into the
@@ -1982,61 +2025,6 @@ async function recordButtonTap(
   });
 }
 
-/**
- * Stops the automation and leaves the conversation to a person.
- *
- * Someone who types a question at a decision point wants to talk to a human,
- * and the worst thing the bot can do is guess a branch and keep talking. The
- * session is closed rather than parked: a human answering mid-conversation
- * should not be interrupted later by a scheduled follow-up.
- */
-async function handOverToHuman(
-  supabase: SupabaseClient<Database>,
-  context: FlowExecutionContext,
-  sessionId: string,
-  nodeId: string,
-  text: string
-) {
-  // Any pending give-up job would poke the person while a human is replying.
-  await supabase
-    .from("scheduled_jobs")
-    .delete()
-    .eq("type", "smart_delay_timeout")
-    .eq("status", "pending")
-    .contains("payload", { sessionId });
-
-  await supabase
-    .from("conversations")
-    .update({ is_automation_paused: true })
-    .eq("id", context.conversationId);
-
-  await supabase
-    .from("flow_sessions")
-    .update({
-      human_takeover_at: new Date().toISOString(),
-      status: "completed",
-      waiting_for_input: false,
-      waiting_until: null,
-    })
-    .eq("id", sessionId);
-
-  await supabase.from("analytics_events").insert({
-    workspace_id: context.workspaceId,
-    flow_id: context.flowId,
-    contact_id: context.contactId,
-    event_type: "handed_to_human",
-    metadata: {
-      nodeId,
-      reason: "reply_matched_no_button",
-      // The question itself is what the person answering needs to see.
-      text: text.slice(0, 500),
-    } as unknown as Json,
-  });
-
-  console.info(
-    `[engine] handed conversation ${context.conversationId} to a human: free text at ${nodeId}`
-  );
-}
 
 /**
  * Which message a tap came from, when it was not the one being waited on.

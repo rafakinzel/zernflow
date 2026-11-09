@@ -233,3 +233,63 @@ describe("resumeSession: a tap that arrives while the run sits in a timed Delay"
     expect(deletes[0].filters.join(" ")).toContain("resume_flow");
   });
 });
+
+describe("resumeSession: a message typed instead of an answer (Rafa, 08/11/2026)", () => {
+  const typed = (text: string) =>
+    ({ ...context(), incomingMessage: { text } }) as unknown as FlowExecutionContext;
+
+  it("keeps the run waiting on its own deadline and notes the question", async () => {
+    const fake = fixture();
+
+    await resumeSession(
+      fake.client as unknown as SupabaseClient<Database>,
+      session,
+      typed("quanto tempo dura a call?")
+    );
+
+    // Nothing paused, nothing cleared, the give-up job left in place.
+    expect(fake.on("conversations", "update")).toHaveLength(0);
+    expect(fake.on("flow_sessions", "update")).toHaveLength(0);
+    expect(fake.on("scheduled_jobs", "delete")).toHaveLength(0);
+
+    const noted = fake.on("analytics_events", "insert")[0];
+    expect((noted?.payload as { event_type?: string })?.event_type).toBe("typed_during_flow");
+    expect((noted?.payload as { metadata?: { text?: string } })?.metadata?.text).toBe(
+      "quanto tempo dura a call?"
+    );
+  });
+
+  it("still follows a reply that is a button's own words", async () => {
+    const fake = fixture();
+
+    await resumeSession(
+      fake.client as unknown as SupabaseClient<Database>,
+      session,
+      typed("não consigo agora")
+    );
+
+    expect(fake.on("scheduled_jobs", "delete")).toHaveLength(1);
+  });
+
+  it("ends the run at once on a plain request to stop", async () => {
+    const fake = fixture();
+
+    await resumeSession(
+      fake.client as unknown as SupabaseClient<Database>,
+      session,
+      typed("não quero mais, obrigada")
+    );
+
+    expect(
+      fake.on("flow_sessions", "update").some(
+        (c) => (c.payload as { status?: string })?.status === "cancelled"
+      )
+    ).toBe(true);
+    expect(fake.on("conversations", "update")).toHaveLength(0);
+    expect(
+      fake.on("analytics_events", "insert").some(
+        (c) => (c.payload as { event_type?: string })?.event_type === "flow_stopped_by_contact"
+      )
+    ).toBe(true);
+  });
+});

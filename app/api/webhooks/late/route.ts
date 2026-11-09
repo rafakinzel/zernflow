@@ -12,6 +12,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { messagePreview } from "@/lib/message-preview";
 import { inboundMessageRow } from "@/lib/inbox/inbound-message";
+import { isStopRequest } from "@/lib/flow-engine/opt-out";
+import { handleTextOutsideAStep } from "@/lib/flow-engine/typed-during-flow";
 
 // ── Zernio API webhook payload ───────────────────────────────────────────────
 
@@ -330,6 +332,18 @@ async function processMessageEvent(
     if (restarted) paused = false;
   }
 
+  // Paused by the team, the bot stays quiet, but a request to stop is still
+  // honoured at once: the run the team may resume later is ended.
+  if (paused && msg.text && isStopRequest(msg.text)) {
+    await handleTextOutsideAStep(supabase, {
+      workspaceId: channel.workspace_id,
+      contactId,
+      channelId: channel.id,
+      conversationId: conversation.id,
+      text: msg.text,
+    });
+  }
+
   if (!paused) {
     const incomingMessage = {
       text: msg.text || undefined,
@@ -483,6 +497,19 @@ async function processMessageEvent(
         }
 
         const waitingSession = waitingSessions?.[0] ?? reopened;
+
+        // Typed while the run sits inside a timed Delay: nothing is waiting
+        // for it, so the run carries on its own clock and the message is
+        // noted for the Central, or the run stops on a request to stop.
+        if (!waitingSession && msg.text && !tapped) {
+          await handleTextOutsideAStep(supabase, {
+            workspaceId: channel.workspace_id,
+            contactId,
+            channelId: channel.id,
+            conversationId: conversation.id,
+            text: msg.text,
+          });
+        }
 
         if (waitingSession) {
           try {
