@@ -426,6 +426,16 @@ describe("uploading a PDF", () => {
     expect(isReelPath("2026-11/1-a.mp4/../../x.mp4")).toBe(false);
     expect(isReelPath("")).toBe(false);
   });
+
+  it("keeps a cover as .jpg next to its Reel", () => {
+    const now = new Date("2026-11-21T00:00:00Z");
+    expect(reelPath("bracket-creep-2026-11-17-capa.jpg", now)).toBe(`2026-11/${now.getTime()}-bracket-creep-2026-11-17-capa.jpg`);
+    expect(reelPath("Capa.JPEG", now)).toBe(`2026-11/${now.getTime()}-capa.jpg`);
+    expect(reelPath("so-o-nome", now)).toBe(`2026-11/${now.getTime()}-so-o-nome.mp4`);
+    expect(isReelPath(`2026-11/${now.getTime()}-capa.jpg`)).toBe(true);
+    expect(isReelPath("2026-11/1-capa.png")).toBe(false);
+    expect(isReelPath("2026-11/1-capa.jpg/../x.jpg")).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

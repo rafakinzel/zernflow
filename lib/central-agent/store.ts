@@ -461,10 +461,14 @@ function isPdf(bytes: Uint8Array): boolean {
 /**
  * Where a finished Reel goes in the `reels` bucket: month folder, a
  * timestamp so nothing is ever overwritten, and a slug of the name.
+ * A `.jpg`/`.jpeg` name is the Reel's cover (Instagram's `cover_url`); any
+ * other name is the MP4.
  */
 export function reelPath(fileName: string, now = new Date()): string {
+  const ext = /\.jpe?g$/i.test(fileName.trim()) ? "jpg" : "mp4";
   const base = fileName
-    .replace(/\.mp4$/i, "")
+    .trim()
+    .replace(/\.(mp4|jpe?g)$/i, "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -472,12 +476,12 @@ export function reelPath(fileName: string, now = new Date()): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 80) || "reel";
   const month = now.toISOString().slice(0, 7);
-  return `${month}/${now.getTime()}-${base}.mp4`;
+  return `${month}/${now.getTime()}-${base}.${ext}`;
 }
 
 /** A path this API handed out, and nothing else (no `..`, no other folder). */
 export function isReelPath(path: string): boolean {
-  return /^\d{4}-\d{2}\/\d+-[a-z0-9-]+\.mp4$/.test(path);
+  return /^\d{4}-\d{2}\/\d+-[a-z0-9-]+\.(mp4|jpg)$/.test(path);
 }
 
 /**

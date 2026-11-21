@@ -119,3 +119,12 @@ Para a Central agendar Reels sozinha: no projeto do **BorrelliChat** no
 Supabase (não o do Nexus), **SQL Editor** → **New query**, cole o conteúdo de
 `supabase/migrations/00028_central_reels.sql` e clique em **Run**. Confira em
 **Storage** um bucket `reels`, público. Não mexe em nada que já existe.
+
+## Capa do Reels (21/11/2026)
+
+Para a Central publicar o Reels com a capa desenhada (e não um quadro do vídeo):
+no projeto do **BorrelliChat** no Supabase, **SQL Editor** → **New query**, cole
+o conteúdo de `supabase/migrations/00031_reels_capa_jpeg.sql` e clique em **Run**.
+O bucket `reels` passa a aceitar também JPEG. Não mexe em nada que já existe.
+A rotina pede o endereço com `{"fileName": "<id>-capa.jpg"}` e manda a imagem
+com `Content-Type: image/jpeg`; o resto é igual ao vídeo.

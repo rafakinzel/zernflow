@@ -9,8 +9,9 @@ import { InputError } from "@/lib/central-agent/flow-template";
  * POST /api/v1/central/reels
  *
  * JSON `{ "fileName": "..." }` answers with a one-time `uploadUrl` the
- * routine PUTs the MP4 to, and the `publicUrl` Metricool schedules the Reel
- * from. Files are never overwritten: each upload gets a name of its own.
+ * routine PUTs the MP4 to, and the `publicUrl` the Reel is published from.
+ * A `.jpg` name is the Reel's cover (PUT as image/jpeg). Files are never
+ * overwritten: each upload gets a name of its own.
  */
 export async function POST(request: NextRequest) {
   const refused = refuseUnlessAgent(request);
