@@ -500,6 +500,16 @@ Resposta:
   Para uma dúvida de verdade, a Central prepara a resposta para a Rafa
   aprovar e mandar.
 
+## 8. Leads do formulário do link na bio (só leitura)
+
+`GET /api/v1/central/leads?dias=7&limite=200` (padrão 7 dias e 200 leads; máximo 1000 dias e 2000 leads). Para a Marina organizar os leads na Central (Rafa, 22/11/2026). Lê só a tabela `link_bio_leads` e não grava nada (travado em `lib/central-agent/leads.test.ts`).
+
+Cada lead traz: `id` (nosso número), `criado_em`, `primeiro_nome`, `respostas` (momento, situacao, ajuda, patrimonio, renda_lar_semana, em português), `produto_recomendado`, `alternativas`, `aceita_contato`, `consentimento_em`, `consentimento_texto`, `origem` (utm), `faixa`, `motivos` e `antigo` (mais de 90 dias). Junto vêm `contagem` por faixa, `total` e `cortado` (bateu no limite: peça de novo com limite maior).
+
+**Nunca sai:** sobrenome, e-mail, WhatsApp, navegador, página de origem e a pontuação crua. Os contatos ficam aqui até a etapa que fala com os leads ser construída e aprovada.
+
+**Faixa (regra fixa, no código):** `quente` = aceitou contato e tem pelo menos um sinal (quer o Thiago olhando o caso, $50 mil ou mais guardados ou investidos, ou renda do lar de $2.000 ou mais por semana); `morno` = aceitou, sem sinal; `sem_contato` = não aceitou. Mudar a régua é uma mudança no código (`classificar`).
+
 ## Como o flow entra no ar
 
 Só pela Rafa: ela abre o flow no construtor, revisa e clica em Publicar. A
