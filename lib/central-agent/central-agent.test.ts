@@ -468,6 +468,7 @@ describe("the routes", () => {
     const iscas = await import("@/app/api/v1/central/iscas/route");
     const conversas = await import("@/app/api/v1/central/conversas/route");
     const responder = await import("@/app/api/v1/central/responder/route");
+    const leads = await import("@/app/api/v1/central/leads/route");
     const params = { params: Promise.resolve({ flowId: "22222222-2222-2222-2222-222222222222" }) };
     return [
       (h: HeadersInit) => conversas.GET(new Request("https://b/api/v1/central/conversas", { headers: h }) as any),
@@ -479,6 +480,7 @@ describe("the routes", () => {
             body: JSON.stringify({ conversa: "22222222-2222-2222-2222-222222222222", texto: "oi" }),
           }) as any
         ),
+      (h: HeadersInit) => leads.GET(new Request("https://b/api/v1/central/leads", { headers: h }) as any),
       (h: HeadersInit) => keywords.GET(new Request("https://b/api/v1/central/keywords", { headers: h }) as any),
       (h: HeadersInit) =>
         flows.POST(new Request("https://b/api/v1/central/flows", { method: "POST", headers: h, body: "{}" }) as any),
@@ -573,6 +575,7 @@ describe("what the door can never do", () => {
       "fluxos-parados/route.ts GET",
       "iscas/route.ts POST",
       "keywords/route.ts GET",
+      "leads/route.ts GET",
       "mapa/route.ts GET",
       "perguntas-no-fluxo/route.ts GET",
       "reels/route.ts POST,DELETE",
