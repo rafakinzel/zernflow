@@ -6,8 +6,10 @@
  * has no DM conversation yet when a comment arrives, so it delivers the
  * first bubble of that node as Instagram's private reply to the comment
  * (`sendFirstMessageAsPrivateReply` in lib/flow-engine/engine.ts). One
- * bubble, then, with the PDF link inside its text: a second bubble or a
- * button would not go out on a private reply.
+ * bubble, then. Since 08/11/2026 that private reply carries the node's
+ * buttons, so the link goes on a button when the routine names one (`botao`,
+ * Rafa, 24/11/2026: a link pasted in the text "não fica inteligente"). Without
+ * `botao`, the link goes inside the text, as before.
  */
 
 export const CENTRAL_CREATED_VIA = "central_agent";
@@ -31,6 +33,11 @@ export interface CommentToDmInput {
    * Checked, never wired: the message must invite them to send it.
    */
   levaPara?: string;
+  /**
+   * The button that carries the link, up to 20 characters ("Quero o guia").
+   * With it, the message must not place or paste the link: the button does.
+   */
+  botao?: string;
 }
 
 export interface CommentToDmFlow {
@@ -39,6 +46,8 @@ export interface CommentToDmFlow {
   /** The two ways a comment can ask for it; see `keywordMatches`. */
   keywords: Array<{ value: string; matchType: MatchType }>;
   dmText: string;
+  /** The button carrying the link, when there is one. */
+  botao?: string;
   nodes: Array<Record<string, unknown>>;
   edges: Array<Record<string, unknown>>;
   triggerConfig: {
@@ -50,6 +59,8 @@ export interface CommentToDmFlow {
 /** Instagram cuts a DM at 1000 characters. */
 const MAX_DM_LENGTH = 1000;
 const MAX_KEYWORD_LENGTH = 40;
+/** Instagram cuts a button title at 20 characters. */
+export const MAX_BUTTON_TITLE = 20;
 
 /**
  * The keyword as typed, without a leading `#`, for storing and showing.
@@ -108,9 +119,26 @@ export function buildCommentToDmFlow(input: CommentToDmInput): CommentToDmFlow {
   const keywords = keywordMatches(keyword);
 
   const message = input.message.trim();
-  const dmText = message.includes("{{link}}")
-    ? message.split("{{link}}").join(input.pdfUrl)
-    : `${message}\n\n${input.pdfUrl}`;
+  let botao: string | undefined;
+  if (input.botao !== undefined && input.botao !== null) {
+    if (typeof input.botao !== "string" || !input.botao.trim()) {
+      throw new InputError("botao precisa ser o texto do botão.");
+    }
+    botao = input.botao.trim();
+    if (botao.length > MAX_BUTTON_TITLE) {
+      throw new InputError(
+        `O texto do botão tem ${botao.length} caracteres; o Instagram aceita ${MAX_BUTTON_TITLE}.`
+      );
+    }
+    if (message.includes("{{link}}") || /https?:\/\//i.test(message)) {
+      throw new InputError("Com botao, o link vai só no botão: tire o {{link}} e qualquer link do texto.");
+    }
+  }
+  const dmText = botao
+    ? message
+    : message.includes("{{link}}")
+      ? message.split("{{link}}").join(input.pdfUrl)
+      : `${message}\n\n${input.pdfUrl}`;
   if (dmText.length > MAX_DM_LENGTH) {
     throw new InputError(
       `A mensagem com o link tem ${dmText.length} caracteres; o Instagram aceita ${MAX_DM_LENGTH}.`
@@ -147,7 +175,13 @@ export function buildCommentToDmFlow(input: CommentToDmInput): CommentToDmFlow {
       id: messageId,
       type: "sendMessage",
       position: { x: 320, y: 0 },
-      data: { messages: [{ text: dmText }] },
+      data: {
+        messages: [
+          botao
+            ? { text: dmText, buttons: [{ type: "url", title: botao, url: input.pdfUrl }] }
+            : { text: dmText },
+        ],
+      },
     },
   ];
 
@@ -166,6 +200,7 @@ export function buildCommentToDmFlow(input: CommentToDmInput): CommentToDmFlow {
     keyword,
     keywords,
     dmText,
+    ...(botao ? { botao } : {}),
     nodes,
     edges,
     triggerConfig: {

@@ -27,7 +27,7 @@ import {
   syncContact,
 } from "@/lib/activecampaign";
 import { executeAiResponse } from "./nodes/ai-response";
-import { privateReplyOptions } from "./private-reply-options";
+import { privateReplyOptions, withButtonLinks } from "./private-reply-options";
 import { isStopRequest } from "./opt-out";
 import { handleTypedDuringFlow } from "./typed-during-flow";
 import { adaptMessage } from "./platform-adapter";
@@ -795,7 +795,7 @@ async function sendFirstMessageAsPrivateReply(
       // reads a typed reply at this step, so it can still carry on.
       if (!options.buttons && !options.quickReplies) throw error;
       console.error("Private reply with buttons refused; sending text only:", error);
-      await messaging.sendPrivateReply(target);
+      await messaging.sendPrivateReply({ ...target, text: withButtonLinks(text, options.buttons) });
     }
 
     await supabase.from("messages").insert({

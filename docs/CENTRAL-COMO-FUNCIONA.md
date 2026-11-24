@@ -48,11 +48,12 @@ entrar numa sequência.
 
 ## Regras do Instagram que mudam tudo
 
-- **Comentário vira uma resposta privada só, e só texto.** Quando um flow
-  começa por comentário, o primeiro "mandar mensagem" sai como resposta
-  privada ao comentário: uma bolha, sem botão. O resto do flow não chega,
-  porque ainda não existe conversa no direct. Por isso o flow da Central é um
-  gatilho mais uma mensagem, com o link dentro do texto.
+- **Comentário vira uma resposta privada só.** Quando um flow começa por
+  comentário, o primeiro "mandar mensagem" sai como resposta privada ao
+  comentário: uma bolha, com até 3 botões (desde 08/11/2026). O resto do flow
+  não chega, porque ainda não existe conversa no direct. Por isso o flow da
+  Central é um gatilho mais uma mensagem, e o link vai num botão (`botao`),
+  nunca colado no texto (Rafa, 24/11/2026).
 - **Janela de 24 horas.** Depois da última ação da pessoa, só dá para mandar
   mensagem livre por 24 horas. Esperas maiores que isso não funcionam.
 - **Conversa pausada.** Se alguém da equipe assumiu a conversa (atendimento
@@ -113,8 +114,8 @@ repetida não mande a mesma resposta duas vezes.
   nem deixa).
 - Criar palavra que já existe, mesmo com outra grafia ou com `#`.
 - Usar palavra curta e comum sem `#` (dispara em conversa normal).
-- Mandar o PDF por um botão ou numa segunda mensagem depois do comentário (não
-  chega).
+- Colar o link no texto da mensagem: ele vai no botão (`botao`).
+- Mandar o PDF numa segunda mensagem depois do comentário (não chega).
 - Agendar o post antes de a Rafa publicar o flow da palavra dele.
 
 ## Quando algo parecer errado num flow existente

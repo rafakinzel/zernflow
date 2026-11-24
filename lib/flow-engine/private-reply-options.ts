@@ -55,3 +55,17 @@ export function privateReplyOptions(message: {
   // rather than a cut-down choice the flow did not draw.
   return {};
 }
+
+/**
+ * The text to send when a private reply with buttons was refused: a link the
+ * buttons carried goes at the end of the text, so the person still gets it.
+ */
+export function withButtonLinks(
+  text: string,
+  buttons?: Array<{ type: string; title: string; url?: string }>
+): string {
+  const links = (buttons ?? [])
+    .filter((b) => b.type === "url" && b.url && !text.includes(b.url))
+    .map((b) => `${b.title}: ${b.url}`);
+  return links.length ? `${text}\n\n${links.join("\n")}` : text;
+}

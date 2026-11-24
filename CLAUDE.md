@@ -84,7 +84,8 @@ It goes out as Instagram's private reply to the comment, and it carries the
 node's buttons (`private-reply-options.ts`): up to 3 as buttons, quick replies
 turned into postback buttons so a non-follower sees them in Message Requests.
 If the platform refuses the version with buttons, the same text goes again
-without them. Until 08/11/2026 it went as bare text and the drawn button never
+without them, with any link a button carried added at the end
+(`withButtonLinks`), so a link on a button is never lost. Until 08/11/2026 it went as bare text and the drawn button never
 reached anyone.
 
 ## The keyword always starts over

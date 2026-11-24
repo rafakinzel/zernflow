@@ -237,6 +237,8 @@ export interface CreatedDraft {
   keyword: string;
   keywords: KeywordMatch[];
   dmText: string;
+  /** The button carrying the link, when the routine asked for one. */
+  botao?: string;
   status: "draft";
   triggerActive: false;
   /** The live flow this one invites the person on to, when asked. */
@@ -336,6 +338,7 @@ export async function createDraftFlow(
     keyword: built.keyword,
     keywords: built.keywords,
     dmText: built.dmText,
+    ...(built.botao ? { botao: built.botao } : {}),
     status: "draft",
     triggerActive: false,
     ...(levaPara ? { levaPara } : {}),

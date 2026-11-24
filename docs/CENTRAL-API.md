@@ -155,7 +155,8 @@ curl -s -X POST "$BASE/api/v1/central/flows" \
   -H "Content-Type: application/json" \
   -d '{
     "keyword": "SS",
-    "message": "Oi! Aqui está o guia que você pediu: {{link}}",
+    "message": "Oi! Separei o guia que você pediu, é só tocar aqui embaixo.",
+    "botao": "Quero o guia",
     "pdfUrl": "https://<projeto>.supabase.co/storage/v1/object/public/iscas/2026-11/1730000000000-guia-ss.pdf",
     "commentReplies": ["Te mandei no direct!", "Corre no direct que chegou lá"]
   }'
@@ -170,6 +171,7 @@ Campos:
 | `pdfUrl` | sim | link `https` do PDF (normalmente o `publicUrl` da rota 3) |
 | `name` | não | nome do flow; padrão `Central TB · <palavra>` |
 | `commentReplies` | não | respostas públicas embaixo do comentário, uma sorteada por vez |
+| `botao` | não, mas use sempre | texto do botão que leva ao link, até 20 caracteres ("Quero o guia"). Com ele, a mensagem não leva `{{link}}` nem link nenhum: o link vai só no botão (Rafa, 24/11/2026) |
 | `levaPara` | não | palavra de direct de um flow no ar para onde a mensagem convida a pessoa (ex.: `FA`); a mensagem precisa conter `#FA` |
 
 Qualquer outro campo é ignorado (mandar `status`, `is_active` ou `matchType`
@@ -196,13 +198,14 @@ Resposta `201`:
     { "value": "SS", "matchType": "exact" },
     { "value": "#SS", "matchType": "contains" }
   ],
-  "dmText": "Oi! Aqui está o guia que você pediu: https://…",
+  "dmText": "Oi! Separei o guia que você pediu, é só tocar aqui embaixo.",
+  "botao": "Quero o guia",
   "status": "draft",
   "triggerActive": false
 }
 ```
 
-Erros: `400` (campo faltando, link não https, mensagem acima de 1000
+Erros: `400` (campo faltando, link não https, `botao` com mais de 20 caracteres ou com link também no texto, mensagem acima de 1000
 caracteres com o link, `levaPara` inválido ou mensagem sem o convite), `409`
 se a palavra já tem gatilho ou conflita com uma existente (`conflitos` diz
 qual flow e um exemplo de comentário).
@@ -210,9 +213,11 @@ qual flow e um exemplo de comentário).
 O que é criado: um flow `draft` com a descrição "Criado pela equipe da Central
 TB, esperando a Rafa", e o mesmo desenho que o construtor faz à mão — um nó
 gatilho `comment_keyword` ligado a um nó Send Message com uma bolha só. No
-comentário, o motor manda essa bolha como resposta privada do Instagram, que
-aceita uma mensagem de texto; por isso o link vai dentro do texto, e não num
-botão.
+comentário, o motor manda essa bolha como resposta privada do Instagram, com
+os botões dela (desde 08/11/2026). Com `botao`, o link vai num botão de link;
+se o Instagram recusar a versão com botão, o motor manda o texto de novo com o
+link no fim, para a pessoa não ficar sem ele. Sem `botao`, o link vai dentro do
+texto, como antes.
 
 O comentário é comparado em minúsculas, e `contains` numa palavra curta sem
 `#` dispararia em "assim" ou "isso", mandando o PDF para quem não pediu. Por
