@@ -21,6 +21,7 @@ import {
 import { buildDesiredTriggers } from "@/lib/flow-triggers";
 import { matchCommentTrigger } from "@/lib/comment-processor";
 import { buildMapa, checarPalavra, dispara, resumirPasso } from "./mapa";
+import { privateReplyOptions, withButtonLinks } from "@/lib/flow-engine/private-reply-options";
 
 const KEY = "k".repeat(48);
 const WS = "11111111-1111-1111-1111-111111111111";
@@ -201,6 +202,41 @@ describe("the comment-to-DM graph", () => {
   it("appends the link when the message does not place it", () => {
     const flow = buildCommentToDmFlow({ ...validInput, message: "Seu guia chegou." });
     expect(flow.dmText).toBe(`Seu guia chegou.\n\n${validInput.pdfUrl}`);
+  });
+
+  it("puts the link on a button when the routine names one", () => {
+    const flow = buildCommentToDmFlow({ ...validInput, message: "Separei o guia pra você.", botao: "Quero o guia" });
+    const message = (flow.nodes as any[])[1];
+    expect(flow.dmText).toBe("Separei o guia pra você.");
+    expect(flow.botao).toBe("Quero o guia");
+    expect(message.data.messages[0]).toEqual({
+      text: "Separei o guia pra você.",
+      buttons: [{ type: "url", title: "Quero o guia", url: validInput.pdfUrl }],
+    });
+    // The private reply sends that button as it is.
+    expect(privateReplyOptions(message.data.messages[0])).toEqual({
+      buttons: [{ type: "url", title: "Quero o guia", url: validInput.pdfUrl }],
+    });
+  });
+
+  it("refuses a button with the link also in the text, or too long to show", () => {
+    expect(() => buildCommentToDmFlow({ ...validInput, botao: "Quero" })).toThrow(InputError);
+    expect(() =>
+      buildCommentToDmFlow({ ...validInput, message: `Aqui: ${validInput.pdfUrl}`, botao: "Quero" })
+    ).toThrow(InputError);
+    expect(() =>
+      buildCommentToDmFlow({ ...validInput, message: "Oi!", botao: "a".repeat(21) })
+    ).toThrow(InputError);
+    expect(() => buildCommentToDmFlow({ ...validInput, message: "Oi!", botao: " " })).toThrow(InputError);
+  });
+
+  it("keeps the link when a refused button falls back to text", () => {
+    const url = validInput.pdfUrl;
+    expect(withButtonLinks("Oi!", [{ type: "url", title: "Quero o guia", url }])).toBe(
+      `Oi!\n\nQuero o guia: ${url}`
+    );
+    expect(withButtonLinks("Oi!", [{ type: "postback", title: "Sim" }])).toBe("Oi!");
+    expect(withButtonLinks(`Oi! ${url}`, [{ type: "url", title: "Abrir", url }])).toBe(`Oi! ${url}`);
   });
 
   it("strips a leading # from the keyword", () => {

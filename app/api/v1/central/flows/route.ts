@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
       name: body?.name,
       commentReplies: body?.commentReplies,
       levaPara: body?.levaPara,
+      botao: body?.botao,
     });
 
     return NextResponse.json(created, { status: 201 });
