@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { refuseUnlessAgent } from "@/lib/central-agent/auth";
+import { refuseUnlessAgentOrReelsMac } from "@/lib/central-agent/auth";
 import { errorResponse } from "@/lib/central-agent/respond";
 import { createReelUploadUrl, deleteReel } from "@/lib/central-agent/store";
 import { InputError } from "@/lib/central-agent/flow-template";
@@ -14,7 +14,7 @@ import { InputError } from "@/lib/central-agent/flow-template";
  * overwritten: each upload gets a name of its own.
  */
 export async function POST(request: NextRequest) {
-  const refused = refuseUnlessAgent(request);
+  const refused = refuseUnlessAgentOrReelsMac(request);
   if (refused) return refused;
 
   try {
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
  * what is waiting to go out.
  */
 export async function DELETE(request: NextRequest) {
-  const refused = refuseUnlessAgent(request);
+  const refused = refuseUnlessAgentOrReelsMac(request);
   if (refused) return refused;
 
   try {

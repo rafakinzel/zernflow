@@ -9,6 +9,14 @@ import { NextResponse } from "next/server";
  */
 export const AGENT_KEY_ENV = "CENTRAL_AGENT_KEY";
 
+/**
+ * A second key, kept only on Rafa's Mac, so a Reel edited there can go to
+ * the public link the same way the cloud routine's does. It opens the Reels
+ * route (upload and delete) and nothing else: the cloud key above keeps
+ * every other route to itself.
+ */
+export const REELS_MAC_KEY_ENV = "CENTRAL_REELS_MAC_KEY";
+
 /** Shorter than this is a typo or a placeholder, not a generated key. */
 const MIN_KEY_LENGTH = 32;
 
@@ -49,5 +57,18 @@ export function refuseUnlessAgent(request: Request): NextResponse | null {
   if (isAgentKeyValid(presentedKey(request.headers), process.env[AGENT_KEY_ENV])) {
     return null;
   }
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+
+/**
+ * Like `refuseUnlessAgent`, but also lets the Mac's own key in. Only the
+ * Reels route uses this. Both comparisons always run, so the answer takes
+ * the same time whichever key (if any) matched.
+ */
+export function refuseUnlessAgentOrReelsMac(request: Request): NextResponse | null {
+  const presented = presentedKey(request.headers);
+  const cloud = isAgentKeyValid(presented, process.env[AGENT_KEY_ENV]);
+  const mac = isAgentKeyValid(presented, process.env[REELS_MAC_KEY_ENV]);
+  if (cloud || mac) return null;
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }

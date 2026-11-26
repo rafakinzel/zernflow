@@ -529,6 +529,11 @@ então um rascunho com gatilho desligado está desligado duas vezes.
   a porta recusa tudo). A mesma chave fica como Network secret no ambiente da
   rotina, para `bot.thiagoborrelli.com`, e `BORRELLICHAT_URL` como variável
   comum.
+- `CENTRAL_REELS_MAC_KEY` na Vercel (opcional): uma segunda chave, guardada
+  só no Mac da Rafa (`~/.borrellichat-reels-key`), para um Reels editado lá
+  subir para o link público. Ela abre só a rota 3b (`reels`, POST e DELETE);
+  todas as outras rotas a recusam (teste "the Mac's Reels key"). Mesmas
+  regras da outra: mínimo 32 caracteres, e sem a variável ela não abre nada.
 - `CENTRAL_AGENT_WORKSPACE_ID` (opcional): o workspace onde os flows são
   criados. Sem ele, usa o único workspace que existir; se houver mais de um,
   a porta recusa até a variável ser definida.

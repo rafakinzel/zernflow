@@ -555,6 +555,79 @@ describe("the routes", () => {
 });
 
 // ---------------------------------------------------------------------------
+// The Mac's key opens the Reels route and nothing else. Every route file is
+// called, so a route added later is held to the same rule without anyone
+// remembering to list it here.
+// ---------------------------------------------------------------------------
+
+describe("the Mac's Reels key", () => {
+  const MAC_KEY = "m".repeat(48);
+  const original = { cloud: process.env.CENTRAL_AGENT_KEY, mac: process.env.CENTRAL_REELS_MAC_KEY };
+  const storage = {
+    createSignedUploadUrl: vi.fn(async () => ({ data: { signedUrl: "https://s/upload" }, error: null })),
+    getPublicUrl: vi.fn(() => ({ data: { publicUrl: "https://s/public" } })),
+    remove: vi.fn(async () => ({ error: null })),
+  };
+  beforeEach(() => {
+    process.env.CENTRAL_AGENT_KEY = KEY;
+    process.env.CENTRAL_REELS_MAC_KEY = MAC_KEY;
+    createServiceClient.mockReset();
+    createServiceClient.mockResolvedValue({ storage: { from: () => storage } });
+  });
+  afterEach(() => {
+    process.env.CENTRAL_AGENT_KEY = original.cloud;
+    process.env.CENTRAL_REELS_MAC_KEY = original.mac;
+  });
+
+  const reels = () => import("@/app/api/v1/central/reels/route");
+  const post = (h: HeadersInit) =>
+    new Request("https://b/api/v1/central/reels", { method: "POST", headers: h, body: JSON.stringify({ fileName: "x.mp4" }) });
+  const del = (h: HeadersInit) =>
+    new Request("https://b/api/v1/central/reels?path=2026-11/1-x.mp4", { method: "DELETE", headers: h });
+
+  it("lets the Mac upload and delete a Reel", async () => {
+    const { POST, DELETE } = await reels();
+    const h = { authorization: `Bearer ${MAC_KEY}` };
+    expect((await POST(post(h) as any)).status).toBe(201);
+    expect((await DELETE(new (await import("next/server")).NextRequest(del(h))) as any).status).toBe(200);
+  });
+
+  it("still lets the cloud key in, and refuses a wrong key or an unset Mac key", async () => {
+    const { POST } = await reels();
+    expect((await POST(post({ authorization: `Bearer ${KEY}` }) as any)).status).toBe(201);
+    expect((await POST(post({ authorization: `Bearer ${"z".repeat(48)}` }) as any)).status).toBe(401);
+    expect((await POST(post({}) as any)).status).toBe(401);
+    delete process.env.CENTRAL_REELS_MAC_KEY;
+    expect((await POST(post({ authorization: `Bearer ${MAC_KEY}` }) as any)).status).toBe(401);
+    process.env.CENTRAL_REELS_MAC_KEY = "short";
+    expect((await POST(post({ authorization: "Bearer short" }) as any)).status).toBe(401);
+  });
+
+  it("is refused by every other route", async () => {
+    const params = { params: Promise.resolve({ flowId: "22222222-2222-2222-2222-222222222222" }) };
+    const others = filesUnder(routeDir).filter(
+      (f) => f.endsWith("route.ts") && relative(routeDir, f) !== join("reels", "route.ts")
+    );
+    expect(others.length).toBeGreaterThan(10);
+    for (const file of others) {
+      const mod: Record<string, unknown> = await import(file);
+      for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) {
+        const handler = mod[method];
+        if (typeof handler !== "function") continue;
+        const req = new Request("https://b/api/v1/central/x", {
+          method,
+          headers: { authorization: `Bearer ${MAC_KEY}` },
+          body: method === "GET" ? undefined : "{}",
+        });
+        const res = await handler(req as any, params);
+        expect(res.status, `${relative(routeDir, file)} ${method}`).toBe(401);
+      }
+    }
+    expect(createServiceClient).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The rule that matters most, held in the source itself: this door has no
 // way to switch anything on, publish, or change or remove what exists.
 // ---------------------------------------------------------------------------
