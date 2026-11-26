@@ -128,3 +128,13 @@ o conteúdo de `supabase/migrations/00031_reels_capa_jpeg.sql` e clique em **Run
 O bucket `reels` passa a aceitar também JPEG. Não mexe em nada que já existe.
 A rotina pede o endereço com `{"fileName": "<id>-capa.jpg"}` e manda a imagem
 com `Content-Type: image/jpeg`; o resto é igual ao vídeo.
+
+## Reels feito no Mac (26/11/2026)
+
+Um Reels editado no Mac sobe para o mesmo link público, com uma chave só do
+Mac, que abre a rota de Reels e nenhuma outra. A chave fica em
+`~/.borrellichat-reels-key` (só a Rafa lê) e na Vercel como
+`CENTRAL_REELS_MAC_KEY` (Production, Sensitive), com redeploy. Para trocar:
+gere outra com `openssl rand -hex 32`, grave nos dois lugares e faça redeploy.
+Para desligar: apague a variável da Vercel e faça redeploy; a nuvem continua
+funcionando com a chave dela.
